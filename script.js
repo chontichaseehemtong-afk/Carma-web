@@ -23,7 +23,7 @@ const ITEM_NAMES = {
     'horn': 'การทำงานของเสียงแตร', 'mirror': 'กระจกมองข้าง/หน้าต่าง', 'leak': 'รอยรั่วซึมใต้ท้องรถ'
 };
 
-let alertModal, userModal, carModal, detailModal;
+let alertModal, userModal, carModal, detailModal, approvalModal;
 let currentRole = null, currentUserName = null, deleteType = null, deleteId = null;
 let selectedImageFile = null;
 
@@ -31,10 +31,12 @@ let selectedImageFile = null;
 // 2. ระบบรักษาความปลอดภัย (ตรวจสอบการเข้าหน้า)
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
+    // กำหนดตัวแปร Modals ให้พร้อมใช้งาน
     if(document.getElementById('alertModal')) alertModal = new bootstrap.Modal(document.getElementById('alertModal'));
     if(document.getElementById('userModal')) userModal = new bootstrap.Modal(document.getElementById('userModal'));
     if(document.getElementById('carModal')) carModal = new bootstrap.Modal(document.getElementById('carModal'));
     if(document.getElementById('detailModal')) detailModal = new bootstrap.Modal(document.getElementById('detailModal'));
+    if(document.getElementById('approvalModal')) approvalModal = new bootstrap.Modal(document.getElementById('approvalModal'));
 
     const pageType = document.body.getAttribute('data-page');
     let currentUser = JSON.parse(sessionStorage.getItem('carma_current_user'));
@@ -144,20 +146,61 @@ if(document.getElementById('staff-check-form')) {
     });
 }
 
+// --- บันทึกการแจ้งซ่อม (แก้ไขพรีวิวรูปร้างแล้ว) ---
 if(document.getElementById('staff-repair-form')) {
     document.getElementById('staff-repair-form').addEventListener('submit', async function(e) {
         e.preventDefault(); 
-        let submitBtn = this.querySelector('button[type="submit"]'); let originalText = submitBtn.innerHTML; submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> กำลังส่ง...';
+        
+        let submitBtn = this.querySelector('button[type="submit"]');
+        let originalText = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> กำลังอัปโหลดรูป...';
+
         try {
-            let imageUrl = null;
-            if (selectedImageFile) {
-                const storageRef = storage.ref(`repairs/${Date.now()}_${selectedImageFile.name}`);
-                const uploadTask = await storageRef.put(selectedImageFile);
-                imageUrl = await uploadTask.ref.getDownloadURL();
+            let imageUrl = ""; 
+            const fileInput = document.getElementById('repair-image'); 
+            const file = fileInput.files[0];
+
+            if (file) {
+                const apiKey = "ed98055f9cee16e83e154246553c9815"; 
+                const formData = new FormData();
+                formData.append("image", file);
+
+                const response = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, { method: "POST", body: formData });
+                const result = await response.json();
+                
+                if (result.success) { imageUrl = result.data.url; } 
+                else { throw new Error("อัปโหลดรูปไม่สำเร็จ"); }
             }
-            await db.collection('repairs').add({ license: document.getElementById('repair-license').value, name: currentUserName, dept: document.getElementById('repair-dept').value, detail: document.getElementById('repair-detail').value, priority: document.getElementById('repair-priority').value, imageUrl: imageUrl, date: new Date().toLocaleDateString('th-TH'), status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp() });
-            showAlert('success', 'ส่งคำขอสำเร็จ!', ''); this.reset(); document.getElementById('repair-name').value = currentUserName; if(document.getElementById('remove-image-btn')) document.getElementById('remove-image-btn').click();
-        } catch (err) { showAlert('error', 'ข้อผิดพลาด', err.message); } finally { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+
+            await db.collection('repairs').add({ 
+                license: document.getElementById('repair-license').value, 
+                name: currentUserName, 
+                dept: document.getElementById('repair-dept').value, 
+                detail: document.getElementById('repair-detail').value, 
+                priority: document.getElementById('repair-priority').value,
+                imageUrl: imageUrl, 
+                adminReason: "", // เตรียมฟิลด์เหตุผลไว้ให้แอดมิน
+                date: new Date().toLocaleDateString('th-TH'), 
+                status: "pending", 
+                timestamp: firebase.firestore.FieldValue.serverTimestamp() 
+            });
+            
+            showAlert('success', 'ส่งคำขอสำเร็จ!', 'ข้อมูลและรูปภาพถูกบันทึกแล้ว'); 
+            
+            this.reset(); 
+            document.getElementById('repair-name').value = currentUserName;
+            
+            // ซ่อนรูปที่พรีวิวไว้
+            document.getElementById('image-preview-box').classList.remove('d-none');
+            document.getElementById('image-preview').classList.add('d-none');
+            document.getElementById('image-preview').src = '';
+            document.getElementById('remove-image-btn').classList.add('d-none');
+            fileInput.value = '';
+            selectedImageFile = null;
+
+        } catch (err) { showAlert('error', 'ข้อผิดพลาด', 'เกิดปัญหา: ' + err.message);
+        } finally { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
     });
 }
 
@@ -195,38 +238,194 @@ if(document.getElementById('user-form')){ document.getElementById('user-form').a
 async function loadAdminCarsTable() { let tbody = document.getElementById('admin-cars-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div>กำลังโหลด...</td></tr>'; try { let snapshot = await db.collection('cars').get(); tbody.innerHTML = ''; snapshot.forEach(doc => { let c = doc.data(); let sColor = c.status === 'พร้อมใช้งาน' ? 'text-success' : (c.status === 'กำลังซ่อมบำรุง' ? 'text-warning' : 'text-danger'); tbody.innerHTML += `<tr><td class="text-muted small px-4">${c.car_id}</td><td><span class="badge bg-light text-dark border fs-6">${c.license}</span></td><td>${c.brand || '-'}</td><td>${c.color || '-'}</td><td><span class="${sColor} fw-bold"><i class="fas fa-circle" style="font-size:10px;"></i> ${c.status}</span></td><td class="text-end px-4"><button onclick="openCarModal('${doc.id}')" class="btn btn-sm btn-light border me-1"><i class="fas fa-edit text-muted"></i></button><button onclick="confirmDelete('cars', '${doc.id}')" class="btn btn-sm btn-light border"><i class="fas fa-trash text-danger"></i></button></td></tr>`; }); } catch(e) {} }
 async function openCarModal(docId) { document.getElementById('car-form').reset(); if(docId && docId !== 'null') { document.getElementById('c_mode').value = docId; document.getElementById('c_id').readOnly = true; document.getElementById('c_id').classList.add('bg-light'); let doc = await db.collection('cars').doc(docId).get(); if(doc.exists) { let car = doc.data(); document.getElementById('c_id').value = car.car_id; document.getElementById('c_license').value = car.license; document.getElementById('c_color').value = car.color || ''; document.getElementById('c_brand').value = car.brand || ''; document.getElementById('c_status').value = car.status || 'พร้อมใช้งาน'; } } else { document.getElementById('c_mode').value = 'add'; document.getElementById('c_id').readOnly = false; document.getElementById('c_id').classList.remove('bg-light'); document.getElementById('c_id').value = "CAR-" + Date.now().toString().slice(-4); } carModal.show(); }
 if(document.getElementById('car-form')){ document.getElementById('car-form').addEventListener('submit', async function(e) { e.preventDefault(); let mode = document.getElementById('c_mode').value; let carData = { car_id: document.getElementById('c_id').value.trim(), license: document.getElementById('c_license').value.trim(), color: document.getElementById('c_color').value.trim(), brand: document.getElementById('c_brand').value.trim(), status: document.getElementById('c_status').value }; try { if(mode === 'add') { await db.collection('cars').add(carData); showAlert('success', 'เพิ่มรถยนต์สำเร็จ', ''); } else { await db.collection('cars').doc(mode).update(carData); showAlert('success', 'อัปเดตรถยนต์สำเร็จ', ''); } loadAdminCarsTable(); carModal.hide(); } catch(e) { showAlert('error', 'เกิดข้อผิดพลาด', e.message); } }); }
-async function loadAdminRepairsTable() { let tbody = document.getElementById('admin-repairs-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div>กำลังโหลด...</td></tr>'; try { let snapshot = await db.collection('repairs').where('status', '==', 'pending').get(); tbody.innerHTML = ''; if(snapshot.empty) { tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted">ไม่มีรายการรออนุมัติ</td></tr>`; return; } snapshot.forEach(doc => { let r = doc.data(); tbody.innerHTML += `<tr><td class="px-4 text-muted small">${r.date}</td><td><span class="fw-bold text-primary">${r.license}</span></td><td>${r.name}<br><small class="text-muted">${r.dept}</small></td><td>${r.detail}</td><td class="text-center px-4"><div class="d-flex justify-content-center gap-2"><button onclick="updateRepairStatus('${doc.id}', 'approved')" class="btn btn-sm btn-success"><i class="fas fa-check"></i> อนุมัติ</button><button onclick="updateRepairStatus('${doc.id}', 'rejected')" class="btn btn-sm btn-danger"><i class="fas fa-times"></i></button></div></td></tr>`; }); } catch(e) {} }
-async function updateRepairStatus(docId, stat) { try { await db.collection('repairs').doc(docId).update({ status: stat }); loadAdminRepairsTable(); loadAdminDashboard(); showAlert('success', 'บันทึกสถานะสำเร็จ', ''); } catch(e) { showAlert('error', 'ข้อผิดพลาด', e.message); } }
+
+// --- โหลดตารางซ่อม และสร้างปุ่ม พิจารณา ---
+async function loadAdminRepairsTable() { 
+    let tbody = document.getElementById('admin-repairs-table').getElementsByTagName('tbody')[0]; 
+    if(!tbody) return; 
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div>กำลังโหลด...</td></tr>'; 
+    try { 
+        let snapshot = await db.collection('repairs').where('status', '==', 'pending').get(); 
+        tbody.innerHTML = ''; 
+        if(snapshot.empty) { tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted">ไม่มีรายการรออนุมัติ</td></tr>`; return; } 
+        snapshot.forEach(doc => { 
+            let r = doc.data(); 
+            tbody.innerHTML += `<tr><td class="px-4 text-muted small">${r.date}</td><td><span class="fw-bold text-primary">${r.license}</span></td><td>${r.name}<br><small class="text-muted">${r.dept}</small></td><td>${r.detail.substring(0,25)}...</td><td class="text-center px-4"><button onclick="openApprovalModal('${doc.id}')" class="btn btn-sm btn-primary rounded-pill px-4 shadow-sm fw-bold"><i class="fas fa-search me-1"></i> พิจารณา</button></td></tr>`; 
+        }); 
+    } catch(e) {} 
+}
+
+// --- เปิดหน้าต่างพิจารณาของ Admin ---
+async function openApprovalModal(docId) {
+    if(!approvalModal) approvalModal = new bootstrap.Modal(document.getElementById('approvalModal'));
+    
+    document.getElementById('approve_doc_id').value = docId;
+    document.getElementById('approval-reason').value = '';
+    
+    let detailsDiv = document.getElementById('approval-details');
+    detailsDiv.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+    approvalModal.show();
+    
+    try {
+        let doc = await db.collection('repairs').doc(docId).get();
+        if(doc.exists) {
+            let data = doc.data();
+            let imgHtml = data.imageUrl ? 
+                `<div class="mb-3 text-center"><a href="${data.imageUrl}" target="_blank"><img src="${data.imageUrl}" class="img-fluid rounded-4 shadow-sm border" style="max-height: 220px; object-fit: cover;"></a><br><small class="text-muted mt-1 d-block"><i class="fas fa-search-plus"></i> คลิกที่รูปเพื่อดูขนาดเต็ม</small></div>` : 
+                `<div class="alert alert-light border border-dashed text-center small py-3 mb-3 text-muted"><i class="fas fa-image fs-3 mb-2 d-block opacity-50"></i>ผู้แจ้งไม่ได้แนบรูปภาพ</div>`;
+            
+            detailsDiv.innerHTML = `
+                ${imgHtml}
+                <div class="row g-2 small mb-1 bg-white p-3 rounded-4 shadow-sm border">
+                    <div class="col-4 text-muted fw-bold">ทะเบียนรถ:</div><div class="col-8 fw-bold text-primary fs-6">${data.license}</div>
+                    <div class="col-4 text-muted fw-bold">ผู้แจ้ง:</div><div class="col-8">${data.name} (${data.dept})</div>
+                    <div class="col-4 text-muted fw-bold">อาการเสีย:</div><div class="col-8 text-dark">${data.detail}</div>
+                </div>
+            `;
+        }
+    } catch(e) {
+        detailsDiv.innerHTML = '<div class="alert alert-danger">โหลดข้อมูลไม่สำเร็จ</div>';
+    }
+}
+
+// --- ส่งผลการพิจารณา (อนุมัติ / ไม่อนุมัติ พร้อมเหตุผล) ---
+async function submitApproval(stat) { 
+    let docId = document.getElementById('approve_doc_id').value;
+    let reason = document.getElementById('approval-reason').value.trim();
+    try { 
+        await db.collection('repairs').doc(docId).update({ 
+            status: stat, 
+            adminReason: reason 
+        }); 
+        approvalModal.hide();
+        loadAdminRepairsTable(); 
+        loadAdminDashboard(); 
+        showAlert('success', 'พิจารณาสำเร็จ!', 'ระบบส่งผลและเหตุผลกลับไปยังพนักงานแล้ว'); 
+    } catch(e) { showAlert('error', 'ข้อผิดพลาด', e.message); } 
+}
+
 async function loadAdminReportsTable() { let tbody = document.getElementById('admin-reports-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div>กำลังโหลด...</td></tr>'; try { let snapshot = await db.collection('checks').orderBy('timestamp', 'desc').get(); tbody.innerHTML = ''; if(snapshot.empty) { tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">ไม่มีข้อมูลประวัติ</td></tr>`; return; } snapshot.forEach((doc) => { let r = doc.data(); let badge = r.status === 'ปกติ' ? 'bg-success' : 'bg-danger'; tbody.innerHTML += `<tr><td class="px-4 text-muted small">${r.date}</td><td><span class="fw-bold">${r.license}</span></td><td class="text-muted">${r.car_id}</td><td>${r.staff}</td><td class="px-4"><span class="badge ${badge}">${r.status}</span></td><td class="text-center px-4"><button onclick="viewDetails('check', '${doc.id}')" class="btn btn-sm btn-info text-white"><i class="fas fa-search"></i></button></td></tr>`; }); } catch(e) {} }
 
 // ==========================================
-// 6. View Details (แว่นขยาย โชว์รูปได้ด้วย)
+// 6. View Details (หน้าต่างแสดงรายละเอียด และเหตุผลแอดมิน)
 // ==========================================
 async function viewDetails(type, docId) {
-    let body = document.getElementById('detail-modal-body'); if(!body) return; 
-    body.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted small">กำลังโหลดข้อมูล...</p></div>';
-    if(!detailModal) detailModal = new bootstrap.Modal(document.getElementById('detailModal')); detailModal.show();
+    let body = document.getElementById('detail-modal-body'); 
+    if(!body) return; 
+    
+    body.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-3 text-muted fw-bold">กำลังโหลดข้อมูล...</p></div>';
+    
+    if(!detailModal) detailModal = new bootstrap.Modal(document.getElementById('detailModal')); 
+    detailModal.show();
+    
     try {
         if(type === 'check') {
             let doc = await db.collection('checks').doc(docId).get();
             if(doc.exists) {
-                let data = doc.data(); let statusColor = data.status === 'ปกติ' ? 'text-success' : 'text-danger'; let defectsHtml = '';
-                if (data.status !== 'ปกติ' && data.defects && data.defects.length > 0) { let list = data.defects.map(d => `<li class="mb-1"><i class="fas fa-times-circle text-danger me-2"></i>${d}</li>`).join(''); defectsHtml = `<div class="mt-3"><div class="text-danger small fw-bold mb-2">รายการที่พบจุดบกพร่อง:</div><ul class="list-unstyled small bg-danger bg-opacity-10 p-3 rounded-3 border border-danger border-opacity-25">${list}</ul></div>`; }
-                body.innerHTML = `<div class="p-3 bg-white rounded shadow-sm"><h6 class="fw-bold text-primary border-bottom pb-2 mb-3"><i class="fas fa-clipboard-check me-2"></i> ข้อมูลตรวจเช็คสภาพ</h6><div class="row mb-2"><div class="col-5 text-muted small">วันที่:</div><div class="col-7 fw-bold">${data.date || '-'}</div></div><div class="row mb-2"><div class="col-5 text-muted small">ทะเบียน:</div><div class="col-7 fw-bold text-primary">${data.license || '-'}</div></div><div class="row mb-2"><div class="col-5 text-muted small">รหัสรถ:</div><div class="col-7">${data.car_id || '-'}</div></div><div class="row mb-2"><div class="col-5 text-muted small">ผู้ตรวจสอบ:</div><div class="col-7">${data.staff || '-'}</div></div><div class="row mt-3"><div class="col-5 text-muted small">ผลประเมินรวม:</div><div class="col-7 fw-bold ${statusColor}">${data.status || '-'}</div></div>${defectsHtml}</div>`;
-            } else { body.innerHTML = '<div class="alert alert-danger">ไม่พบข้อมูลในฐานข้อมูล</div>'; }
+                let data = doc.data(); 
+                let statusColor = data.status === 'ปกติ' ? 'text-success' : 'text-danger'; 
+                let defectsHtml = '';
+                
+                if (data.status !== 'ปกติ' && data.defects && data.defects.length > 0) { 
+                    let list = data.defects.map(d => `<li class="mb-2"><i class="fas fa-times-circle text-danger me-2"></i>${d}</li>`).join(''); 
+                    defectsHtml = `<div class="mt-4"><div class="text-danger fw-bold mb-2"><i class="fas fa-exclamation-triangle me-1"></i> รายการที่พบจุดบกพร่อง:</div><ul class="list-unstyled small bg-danger bg-opacity-10 p-3 rounded-4 border border-danger border-opacity-25 shadow-sm">${list}</ul></div>`; 
+                }
+                
+                body.innerHTML = `
+                <div class="p-2">
+                    <div class="d-flex align-items-center border-bottom pb-3 mb-4">
+                        <div class="bg-primary bg-opacity-10 p-3 rounded-circle me-3"><i class="fas fa-clipboard-check text-primary fs-4"></i></div>
+                        <div><h5 class="fw-bold text-dark mb-0">ข้อมูลตรวจเช็คสภาพรถ</h5><small class="text-muted">รายละเอียดการตรวจสอบประจำวัน</small></div>
+                    </div>
+                    <div class="row g-3 mb-2">
+                        <div class="col-5 text-muted small fw-bold">วันที่บันทึก:</div><div class="col-7">${data.date || '-'}</div>
+                        <div class="col-5 text-muted small fw-bold">ทะเบียนรถ:</div><div class="col-7 fw-bold text-primary fs-6"><span class="badge bg-light text-dark border px-3 py-2">${data.license || '-'}</span></div>
+                        <div class="col-5 text-muted small fw-bold">รหัสรถยนต์:</div><div class="col-7">${data.car_id || '-'}</div>
+                        <div class="col-5 text-muted small fw-bold">ผู้ตรวจสอบ:</div><div class="col-7">${data.staff || '-'}</div>
+                    </div>
+                    <div class="row mt-4 bg-light p-3 rounded-4 align-items-center shadow-sm">
+                        <div class="col-5 text-muted small fw-bold">ผลการประเมิน:</div>
+                        <div class="col-7 fw-bold fs-5 ${statusColor}">${data.status || '-'}</div>
+                    </div>
+                    ${defectsHtml}
+                </div>`;
+            } else { body.innerHTML = '<div class="alert alert-danger rounded-4 text-center"><i class="fas fa-times-circle fs-3 mb-2 d-block"></i>ไม่พบข้อมูลในระบบ</div>'; }
+            
         } else if(type === 'repair') {
             let doc = await db.collection('repairs').doc(docId).get();
             if(doc.exists) {
-                let data = doc.data(); let sText = data.status === 'pending' ? 'รออนุมัติ' : (data.status === 'approved' ? 'อนุมัติแล้ว' : 'ปฏิเสธ'); let bClass = data.status === 'pending' ? 'text-warning' : (data.status === 'approved' ? 'text-success' : 'text-danger');
-                let imgHtml = data.imageUrl ? `<div class="text-center mb-3"><img src="${data.imageUrl}" class="img-fluid rounded border border-primary p-1" style="max-height: 250px;"></div>` : '';
-                body.innerHTML = `<div class="p-3 bg-white rounded shadow-sm"><h6 class="fw-bold text-primary border-bottom pb-2 mb-3"><i class="fas fa-tools me-2"></i> ข้อมูลแจ้งซ่อมบำรุง</h6>${imgHtml}<div class="row mb-2"><div class="col-5 text-muted small">วันที่:</div><div class="col-7 fw-bold">${data.date || '-'}</div></div><div class="row mb-2"><div class="col-5 text-muted small">ทะเบียน:</div><div class="col-7 fw-bold text-primary">${data.license || '-'}</div></div><div class="row mb-2"><div class="col-5 text-muted small">ผู้แจ้ง:</div><div class="col-7">${data.name || '-'} <span class="text-muted small">(${data.dept || ''})</span></div></div><div class="row mb-3"><div class="col-5 text-muted small">สถานะ:</div><div class="col-7 fw-bold ${bClass}">${sText}</div></div><div class="mt-2"><div class="text-muted small mb-1">อาการเสีย:</div><div class="p-2 bg-light border rounded" style="font-size: 14px;">${data.detail || '-'}</div></div></div>`;
-            } else { body.innerHTML = '<div class="alert alert-danger">ไม่พบข้อมูลในฐานข้อมูล</div>'; }
+                let data = doc.data(); 
+                let sText = data.status === 'pending' ? 'รอพิจารณาอนุมัติ' : (data.status === 'approved' ? 'อนุมัติการซ่อมแล้ว' : 'ไม่อนุมัติ / ยกเลิก'); 
+                let bClass = data.status === 'pending' ? 'bg-warning text-dark' : (data.status === 'approved' ? 'bg-success text-white' : 'bg-danger text-white');
+                let iconClass = data.status === 'pending' ? 'fa-hourglass-half' : (data.status === 'approved' ? 'fa-check-circle' : 'fa-times-circle');
+                
+                let imgHtml = data.imageUrl ? `
+                    <div class="mb-4 text-center">
+                        <div class="position-relative d-inline-block shadow rounded-4 overflow-hidden" style="border: 4px solid #f8f9fa;">
+                            <img src="${data.imageUrl}" class="img-fluid" style="max-height: 280px; object-fit: cover; width: 100%; border-radius: 8px;" alt="ภาพประกอบการแจ้งซ่อม">
+                            <div class="position-absolute bottom-0 start-0 w-100 p-2 bg-dark bg-opacity-75 text-white text-start" style="font-size: 13px;">
+                                <i class="fas fa-camera text-info me-1"></i> ภาพประกอบอาการเสีย
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <a href="${data.imageUrl}" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-4 shadow-sm fw-bold transition-all hover-shadow">
+                                <i class="fas fa-expand-arrows-alt me-1"></i> ดูรูปภาพขนาดเต็ม
+                            </a>
+                        </div>
+                    </div>` : `
+                    <div class="mb-4 text-center p-4 bg-light rounded-4 border border-2 text-muted" style="border-style: dashed !important;">
+                        <div class="bg-white rounded-circle d-inline-flex justify-content-center align-items-center shadow-sm mb-2" style="width: 50px; height: 50px;">
+                            <i class="fas fa-image fs-4 text-secondary opacity-50"></i>
+                        </div>
+                        <p class="mb-0 small fw-bold text-secondary">ไม่ได้แนบรูปภาพประกอบ</p>
+                    </div>`;
+
+                let reasonHtml = data.adminReason ? `
+                    <div class="mt-4 px-2">
+                        <div class="text-dark small fw-bold mb-2"><i class="fas fa-comment-dots me-1 text-warning"></i> หมายเหตุ / เหตุผลจากผู้ดูแลระบบ:</div>
+                        <div class="p-3 bg-warning bg-opacity-10 border border-warning border-opacity-50 rounded-4 shadow-sm" style="font-size: 14px; color: #664d03; line-height: 1.6;">
+                            ${data.adminReason.replace(/\n/g, '<br>')}
+                        </div>
+                    </div>` : '';
+
+                body.innerHTML = `
+                <div class="p-2">
+                    <div class="d-flex align-items-center border-bottom pb-3 mb-4">
+                        <div class="bg-warning bg-opacity-10 p-3 rounded-circle me-3"><i class="fas fa-tools text-warning fs-4"></i></div>
+                        <div><h5 class="fw-bold text-dark mb-0">ข้อมูลแจ้งซ่อมบำรุง</h5><small class="text-muted">รายละเอียดการขออนุมัติ</small></div>
+                    </div>
+                    
+                    ${imgHtml}
+                    
+                    <div class="bg-light p-3 rounded-4 mb-4 shadow-sm border border-white">
+                        <div class="row g-2 align-items-center">
+                            <div class="col-4 text-muted small fw-bold">สถานะล่าสุด:</div>
+                            <div class="col-8"><span class="badge ${bClass} px-3 py-2 fs-6 rounded-pill shadow-sm"><i class="fas ${iconClass} me-1"></i> ${sText}</span></div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-2 px-2">
+                        <div class="col-5 text-muted small fw-bold"><i class="far fa-calendar-alt me-1"></i> วันที่แจ้ง:</div><div class="col-7">${data.date || '-'}</div>
+                        <div class="col-5 text-muted small fw-bold"><i class="fas fa-car me-1"></i> ทะเบียนรถ:</div><div class="col-7 fw-bold text-primary fs-6">${data.license || '-'}</div>
+                        <div class="col-5 text-muted small fw-bold"><i class="far fa-user me-1"></i> ผู้แจ้งซ่อม:</div><div class="col-7">${data.name || '-'} <br><small class="text-muted bg-light border px-2 py-1 rounded">แผนก: ${data.dept || '-'}</small></div>
+                    </div>
+                    
+                    <div class="mt-4 px-2">
+                        <div class="text-dark small fw-bold mb-2"><i class="fas fa-clipboard-list me-1 text-primary"></i> รายละเอียดอาการเสีย:</div>
+                        <div class="p-3 bg-white border border-primary border-opacity-25 rounded-4 shadow-sm" style="font-size: 14px; line-height: 1.6; color: #495057;">
+                            ${data.detail ? data.detail.replace(/\n/g, '<br>') : '-'}
+                        </div>
+                    </div>
+
+                    ${reasonHtml}
+                </div>`;
+            } else { body.innerHTML = '<div class="alert alert-danger rounded-4 text-center"><i class="fas fa-times-circle fs-3 mb-2 d-block"></i>ไม่พบข้อมูลในระบบ</div>'; }
         }
-    } catch(err) { body.innerHTML = '<div class="alert alert-danger">เกิดข้อผิดพลาดในการดึงข้อมูล</div>'; }
+    } catch(err) { body.innerHTML = '<div class="alert alert-danger rounded-4 text-center"><i class="fas fa-exclamation-triangle fs-3 mb-2 d-block"></i>เกิดข้อผิดพลาดในการดึงข้อมูล</div>'; }
 }
 
 function filterTable(inputId, tableId) { let input = document.getElementById(inputId).value.toLowerCase(); let tbody = document.getElementById(tableId).getElementsByTagName('tbody')[0]; if(tbody) Array.from(tbody.getElementsByTagName('tr')).forEach(tr => { tr.style.display = tr.innerText.toLowerCase().includes(input) ? '' : 'none'; }); }
-function showAlert(type, title, desc) { document.getElementById('alert-title').innerText = title; document.getElementById('alert-desc').innerText = desc; let icon = document.getElementById('alert-icon'), btn = document.getElementById('alert-buttons'); if(type === 'success') { icon.innerHTML = '<i class="fas fa-check-circle text-success" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-success w-100 fw-bold" data-bs-dismiss="modal">ตกลง</button>`; } else if(type === 'error') { icon.innerHTML = '<i class="fas fa-exclamation-circle text-danger" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-danger w-100 fw-bold" data-bs-dismiss="modal">ตกลง</button>`; } else if(type === 'delete') { icon.innerHTML = '<i class="fas fa-trash-alt text-danger" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-danger w-50 fw-bold" onclick="executeDelete()">ลบเลย</button><button class="btn btn-light border w-50 fw-bold" data-bs-dismiss="modal">ยกเลิก</button>`; } else if(type === 'logout') { icon.innerHTML = '<i class="fas fa-sign-out-alt text-warning" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-danger w-50 fw-bold" onclick="logout()">ออกจากระบบ</button><button class="btn btn-light border w-50 fw-bold" data-bs-dismiss="modal">ยกเลิก</button>`; } if(!alertModal) alertModal = new bootstrap.Modal(document.getElementById('alertModal')); alertModal.show(); }
+function showAlert(type, title, desc) { document.getElementById('alert-title').innerText = title; document.getElementById('alert-desc').innerText = desc; let icon = document.getElementById('alert-icon'), btn = document.getElementById('alert-buttons'); if(type === 'success') { icon.innerHTML = '<i class="fas fa-check-circle text-success" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-success w-100 fw-bold rounded-pill" data-bs-dismiss="modal">ตกลง</button>`; } else if(type === 'error') { icon.innerHTML = '<i class="fas fa-exclamation-circle text-danger" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-danger w-100 fw-bold rounded-pill" data-bs-dismiss="modal">ตกลง</button>`; } else if(type === 'delete') { icon.innerHTML = '<i class="fas fa-trash-alt text-danger" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-danger w-50 fw-bold rounded-pill" onclick="executeDelete()">ลบเลย</button><button class="btn btn-light border w-50 fw-bold rounded-pill" data-bs-dismiss="modal">ยกเลิก</button>`; } else if(type === 'logout') { icon.innerHTML = '<i class="fas fa-sign-out-alt text-warning" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-danger w-50 fw-bold rounded-pill" onclick="logout()">ออกจากระบบ</button><button class="btn btn-light border w-50 fw-bold rounded-pill" data-bs-dismiss="modal">ยกเลิก</button>`; } if(!alertModal) alertModal = new bootstrap.Modal(document.getElementById('alertModal')); alertModal.show(); }
 function confirmDelete(type, docId) { deleteType = type; deleteId = docId; showAlert('delete', 'ยืนยันการลบ?', 'ข้อมูลที่ลบจะไม่สามารถกู้คืนได้'); }
 async function executeDelete() { try { await db.collection(deleteType).doc(deleteId).delete(); if(deleteType === 'users') loadAdminUsersTable(); if(deleteType === 'cars') loadAdminCarsTable(); loadAdminDashboard(); alertModal.hide(); setTimeout(() => showAlert('success', 'ลบข้อมูลสำเร็จ', ''), 300); } catch(err) { alertModal.hide(); setTimeout(() => showAlert('error', 'ลบไม่สำเร็จ', 'เช็คสิทธิ์ Firebase Rule'), 300); } }
 function showLogoutModal() { showAlert('logout', 'ยืนยันออกจากระบบ?', 'คุณต้องการสิ้นสุดการทำงานใช่หรือไม่'); }
