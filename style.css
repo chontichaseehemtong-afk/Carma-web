@@ -1,19 +1,20 @@
-/* === Custom CSS for CARMA === */
+/* === Custom CSS for VCCS === */
 body { font-family: 'Promt', sans-serif; background-color: #f4f6f9; overflow-x: hidden; }
 
 /* Backgrounds & Login */
 .login-bg { background: linear-gradient(rgba(13, 71, 161, 0.8), rgba(25, 118, 210, 0.8)), url('https://images.unsplash.com/photo-1486495146582-96652c234e6c?q=80&w=2070&auto=format&fit=crop') center/cover; height: 100vh; display: flex; align-items: center; justify-content: center; }
 .login-card { width: 100%; max-width: 450px; border-radius: 20px; }
 
-/* Sidebar Navigation */
-.sidebar { width: 260px; min-width: 260px; background: linear-gradient(180deg, #0d47a1 0%, #1565c0 100%); height: 100vh; display: flex; flex-direction: column; transition: all 0.3s ease; }
+/* Sidebar Navigation (สำหรับ Desktop) */
+.sidebar { width: 260px; min-width: 260px; background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); height: 100vh; display: flex; flex-direction: column; transition: all 0.3s ease; z-index: 1000; }
 .sidebar-menu .nav-link { color: rgba(255,255,255,0.7); font-weight: 500; padding: 12px 20px; border-radius: 8px; margin-bottom: 5px; transition: 0.2s; cursor: pointer; display: flex; align-items: center; white-space: nowrap; }
-.sidebar-menu .nav-link:hover, .sidebar-menu .nav-link.active { color: white; background-color: rgba(255,255,255,0.15); }
-.sidebar-menu .nav-link i { width: 30px; text-align: center; font-size: 1.1rem; }
+.sidebar-menu .nav-link:hover, .sidebar-menu .nav-link.active { color: white; background-color: rgba(255,255,255,0.15); transform: translateX(5px); }
+.sidebar-menu .nav-link i { width: 25px; text-align: center; margin-right: 10px; transition: 0.2s; }
 
-/* Main Content Area */
+/* Main Content */
 .main-content { flex-grow: 1; height: 100vh; overflow-y: auto; padding: 30px; background-color: #f4f6f9; }
-.content-section { display: none; }
+.content-section { display: none; animation: fadeIn 0.3s ease-in-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
 /* UI Elements */
 .widget-icon { width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 20px; }
@@ -21,15 +22,82 @@ body { font-family: 'Promt', sans-serif; background-color: #f4f6f9; overflow-x: 
 .image-box:hover { border-color: #0d6efd; color: #0d6efd; background-color: #e9ecef; }
 .table th { white-space: nowrap; } .table td { vertical-align: middle; }
 
-/* === MOBILE RESPONSIVE === */
+/* ================================================= */
+/* === MOBILE RESPONSIVE (App-Like Bottom Navigation) === */
+/* ================================================= */
 @media (max-width: 768px) {
-    .main-layout { flex-direction: column; }
-    .sidebar { width: 100%; min-width: 100%; height: auto; padding: 10px !important; flex-shrink: 0; }
-    .sidebar-menu { flex-direction: row !important; overflow-x: auto; white-space: nowrap; padding-bottom: 5px; margin-bottom: 0 !important; }
-    .sidebar-menu .nav-item { margin-right: 10px; margin-bottom: 0; }
-    .sidebar-menu .nav-link { padding: 8px 15px; font-size: 14px; }
-    .sidebar-menu .nav-link span { display: inline-block; }
-    .main-content { padding: 15px; height: calc(100vh - 65px); }
-    .content-header h3 { font-size: 1.25rem; margin-bottom: 15px !important;}
-    .login-card { padding: 30px 20px !important; width: 95%; }
+    .main-layout { display: block; }
+    
+    /* 1. เปลี่ยน Sidebar ให้กลายเป็นบาร์ด้านล่างสุด */
+    .sidebar { 
+        position: fixed; 
+        bottom: 0; 
+        left: 0; 
+        width: 100%; 
+        height: 75px !important; 
+        min-width: 100%; 
+        flex-direction: row !important; 
+        padding: 0 !important; 
+        border-top-left-radius: 20px;
+        border-top-right-radius: 20px;
+        box-shadow: 0 -5px 20px rgba(0,0,0,0.25); /* เพิ่มเงาให้แยกลอยจากเนื้อหา */
+    }
+
+    /* 2. ซ่อนส่วนหัว(โลโก้) และ ท้าย(ปุ่มออกระบบเดิม) ของเมนู */
+    .sidebar-header, .sidebar-footer { display: none !important; }
+
+    /* 3. จัดเรียงปุ่มให้กระจายตัวกันตรงกลาง */
+    .sidebar-menu { 
+        flex-direction: row !important; 
+        width: 100%; 
+        justify-content: space-around; 
+        align-items: center; 
+        padding: 0 5px !important; 
+        margin-top: 0 !important;
+        overflow-x: auto; /* เลื่อนซ้ายขวาได้ถ้าเมนูเยอะไป */
+    }
+    .sidebar-menu::-webkit-scrollbar { display: none; } /* ซ่อนหลอด Scrollbar */
+    .sidebar-menu .nav-item { margin: 0 !important; } /* ลบระยะห่างที่เกินมา */
+
+    /* 4. ปรับหน้าตาปุ่มเมนูให้เหมือนแอป (ไอคอนใหญ่, ข้อความเล็กอยู่ล่าง) */
+    .sidebar-menu .nav-link { 
+        flex-direction: column; 
+        padding: 10px 5px !important; 
+        margin: 0; 
+        font-size: 11px; /* ขนาดฟอนต์มือถือ */
+        min-width: 60px;
+        border-radius: 12px;
+        justify-content: center;
+    }
+    .sidebar-menu .nav-link i { margin-right: 0; margin-bottom: 4px; font-size: 1.4rem; }
+    .sidebar-menu .nav-link span { display: block; }
+    
+    /* 5. เอฟเฟกต์ตอนกดเมนูบนมือถือ (ป๊อปเด้งขึ้นนิดนึง และเปลี่ยนสี) */
+    .sidebar-menu .nav-link:hover, .sidebar-menu .nav-link.active {
+        transform: translateY(-5px);
+        background-color: transparent;
+        color: #0dcaf0; /* สีฟ้าสว่าง */
+    }
+
+    /* 6. ปรับพื้นที่เนื้อหาหลัก ไม่ให้โดนเมนูด้านล่างทับ */
+    .main-content { 
+        height: auto; 
+        min-height: 100vh; 
+        padding: 20px 15px 100px 15px !important; /* 100px คือการดันเนื้อหาหนีเมนูด้านล่าง */
+    }
+
+    /* 7. ปรับขนาดตัวอักษรและระยะห่างของการ์ดต่างๆ ให้พอดียามแนวตั้ง */
+    .content-header h3 { font-size: 1.4rem; }
+    .content-header p { font-size: 0.85rem; }
+    .card-body { padding: 15px !important; }
+    .card-header h5 { font-size: 1.1rem; }
+    
+    /* 8. ปรับระยะห่างตารางให้พอดีนิ้วกด */
+    .table-responsive { padding-bottom: 10px; }
 }
+
+/* Custom Scrollbar สำหรับ Desktop */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f1f1f1; }
+::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
