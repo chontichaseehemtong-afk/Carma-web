@@ -3,25 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VCC system - เข้าสู่ระบบ</title>
+    <title> VVCC system - ระบบผู้ดูแลระบบ</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Promt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="login-bg" data-page="login">
+<body data-page="admin">
 
-    <div class="login-card p-4 p-md-5 shadow-lg bg-white">
-        <div class="text-center mb-4">
-            <h1 class="text-primary fw-bold"><i class="fas fa-car-crash"></i> Vehicle condition check system</h1>
-            <p class="text-muted">ระบบบริหารจัดการรถยนต์และซ่อมบำรุง</p>
+    <div class="d-flex w-100 main-layout">
+        <nav class="sidebar shadow-sm flex-shrink-0">
+            <div class="sidebar-header text-center mb-4 d-none d-md-block pt-3">
+                <h3 class="fw-bold mb-0 text-white"><i class="fas fa-car-crash text-warning"></i> VCC system</h3>
+                <small class="text-warning">Administrator</small>
+            </div>
+            <ul class="nav sidebar-menu flex-column mb-auto px-2">
+                <li class="nav-item"><a onclick="showAdminView('admin-dashboard')" id="admin-dashboard-menu" class="nav-link"><i class="fas fa-tachometer-alt"></i> <span>แดชบอร์ด</span></a></li>
+                <li class="nav-item"><a onclick="showAdminView('admin-users')" id="admin-users-menu" class="nav-link"><i class="fas fa-users-cog"></i> <span>จัดการผู้ใช้</span></a></li>
+                <li class="nav-item"><a onclick="showAdminView('admin-cars')" id="admin-cars-menu" class="nav-link"><i class="fas fa-car"></i> <span>จัดการรถยนต์</span></a></li>
+                <li class="nav-item"><a onclick="showAdminView('admin-repairs')" id="admin-repairs-menu" class="nav-link"><i class="fas fa-clipboard-check"></i> <span>อนุมัติซ่อม</span></a></li>
+                <li class="nav-item"><a onclick="showAdminView('admin-reports')" id="admin-reports-menu" class="nav-link"><i class="fas fa-file-invoice"></i> <span>รายงาน</span></a></li>
+                <li class="nav-item d-md-none mt-2"><a onclick="showLogoutModal()" class="nav-link text-warning"><i class="fas fa-sign-out-alt"></i> <span>ออกระบบ</span></a></li>
+            </ul>
+            <div class="sidebar-footer text-center d-none d-md-block mt-4 pt-3 border-top border-light border-opacity-25 pb-3 px-3">
+                <h6 class="fw-bold mb-1 text-white">ผู้ดูแลระบบ</h6>
+                <button class="btn btn-outline-light btn-sm w-100" onclick="showLogoutModal()"><i class="fas fa-sign-out-alt"></i> ออกจากระบบ</button>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <div class="content-header mb-4">
+                <h3 class="text-primary fw-bold"><i id="admin-header-icon" class="fas fa-tachometer-alt me-2"></i> <span id="admin-content-title">กำลังโหลด...</span></h3>
+                <p id="admin-content-desc" class="text-muted d-none d-md-block ms-5">กำลังตรวจสอบข้อมูล...</p>
+            </div>
+
+            <div id="admin-dashboard-content" class="content-section">
+                <div class="row g-3 g-md-4">
+                    <div class="col-12 col-md-4"><div class="card h-100 border-0 border-start border-primary border-5 shadow-sm rounded-4"><div class="card-body d-flex align-items-center"><div class="widget-icon bg-primary bg-opacity-10 text-primary me-3 rounded-circle"><i class="fas fa-users"></i></div><div><h6 class="text-muted mb-1 small fw-bold">ผู้ใช้งานในระบบ</h6><h3 class="mb-0 fw-bold text-dark" id="dashboard-users">0</h3></div></div></div></div>
+                    <div class="col-12 col-md-4"><div class="card h-100 border-0 border-start border-success border-5 shadow-sm rounded-4"><div class="card-body d-flex align-items-center"><div class="widget-icon bg-success bg-opacity-10 text-success me-3 rounded-circle"><i class="fas fa-car"></i></div><div><h6 class="text-muted mb-1 small fw-bold">รถยนต์ทั้งหมด</h6><h3 class="mb-0 fw-bold text-dark" id="dashboard-cars">0</h3></div></div></div></div>
+                    <div class="col-12 col-md-4"><div class="card h-100 border-0 border-start border-warning border-5 shadow-sm rounded-4"><div class="card-body d-flex align-items-center"><div class="widget-icon bg-warning bg-opacity-10 text-warning me-3 rounded-circle"><i class="fas fa-tools"></i></div><div><h6 class="text-muted mb-1 small fw-bold">รออนุมัติแจ้งซ่อม</h6><h3 class="mb-0 fw-bold text-dark" id="dashboard-repairs-pending">0</h3></div></div></div></div>
+                </div>
+            </div>
+
+            <div id="admin-users-content" class="content-section">
+                <div class="card shadow-sm border-0 rounded-4">
+                    <div class="card-header bg-white pt-4 pb-3 border-0 d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3">
+                        <h5 class="fw-bold text-primary mb-0"><i class="fas fa-users-cog me-2"></i> ฐานข้อมูลพนักงาน</h5>
+                        <button onclick="openUserModal(null)" class="btn btn-primary btn-sm fw-bold"><i class="fas fa-plus me-1"></i> เพิ่มพนักงาน</button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="px-4 pb-3"><div class="input-group" style="max-width: 300px;"><span class="input-group-text bg-light border-end-0"><i class="fas fa-search text-muted"></i></span><input type="text" id="search-users" class="form-control bg-light border-start-0 ps-0" onkeyup="filterTable('search-users', 'admin-users-table')" placeholder="ค้นหาชื่อ, แผนก..."></div></div>
+                        <div class="table-responsive"><table id="admin-users-table" class="table table-hover align-middle mb-0"><thead class="table-light text-muted small"><tr><th class="px-4">รหัส</th><th>ชื่อ-นามสกุล</th><th>แผนก</th><th>การติดต่อ</th><th>สิทธิ์/สถานะ</th><th class="text-end px-4">จัดการ</th></tr></thead><tbody class="border-top-0"></tbody></table></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="admin-cars-content" class="content-section">
+                <div class="card shadow-sm border-0 rounded-4">
+                    <div class="card-header bg-white pt-4 pb-3 border-0 d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3">
+                        <h5 class="fw-bold text-primary mb-0"><i class="fas fa-car me-2"></i> ทะเบียนรถยนต์องค์กร</h5>
+                        <button onclick="openCarModal(null)" class="btn btn-primary btn-sm fw-bold"><i class="fas fa-plus me-1"></i> เพิ่มรถใหม่</button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="px-4 pb-3"><div class="input-group" style="max-width: 300px;"><span class="input-group-text bg-light border-end-0"><i class="fas fa-search text-muted"></i></span><input type="text" id="search-cars" class="form-control bg-light border-start-0 ps-0" onkeyup="filterTable('search-cars', 'admin-cars-table')" placeholder="ค้นหาป้ายทะเบียน..."></div></div>
+                        <div class="table-responsive"><table id="admin-cars-table" class="table table-hover align-middle mb-0"><thead class="table-light text-muted small"><tr><th class="px-4">รหัสรถยนต์</th><th>ป้ายทะเบียน</th><th>ยี่ห้อ</th><th>สี</th><th>สถานะรถ</th><th class="text-end px-4">จัดการ</th></tr></thead><tbody class="border-top-0"></tbody></table></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="admin-repairs-content" class="content-section">
+                <div class="card shadow-sm border-0 rounded-4">
+                    <div class="card-header bg-white pt-4 pb-3 border-0"><h5 class="fw-bold text-primary mb-0"><i class="fas fa-clipboard-check me-2"></i> คำขอรอพิจารณา</h5></div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive"><table id="admin-repairs-table" class="table table-hover align-middle mb-0"><thead class="table-light text-muted small"><tr><th class="px-4">วันที่</th><th>ทะเบียน</th><th>ผู้แจ้ง (แผนก)</th><th>รายละเอียดอาการ</th><th class="text-center px-4">การตัดสินใจ</th></tr></thead><tbody class="border-top-0"></tbody></table></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="admin-reports-content" class="content-section">
+                <div class="card shadow-sm border-0 rounded-4">
+                    <div class="card-header bg-white pt-4 pb-3 border-0 d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3">
+                        <h5 class="fw-bold text-primary mb-0"><i class="fas fa-file-invoice me-2"></i> ประวัติการตรวจเช็ค</h5>
+                        <div class="input-group" style="max-width: 300px;"><span class="input-group-text bg-light border-end-0"><i class="fas fa-search text-muted"></i></span><input type="text" id="search-reports" class="form-control bg-light border-start-0 ps-0" onkeyup="filterTable('search-reports', 'admin-reports-table')" placeholder="ค้นหาในรายงาน..."></div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive"><table id="admin-reports-table" class="table table-hover align-middle mb-0"><thead class="table-light text-muted small"><tr><th class="px-4">วันที่</th><th>ทะเบียนรถ</th><th>รหัสรถยนต์</th><th>ผู้ตรวจสอบ</th><th class="px-4">ผลประเมิน</th><th class="text-center px-4">ดูข้อมูล</th></tr></thead><tbody class="border-top-0"></tbody></table></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="modal fade" id="userModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content border-0 shadow"><div class="modal-header bg-primary text-white border-0"><h5 class="modal-title fw-bold" id="user-modal-title">จัดการพนักงาน</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body p-4 bg-light"><form id="user-form"><input type="hidden" id="u_mode"><div class="card border-0 shadow-sm mb-3"><div class="card-body"><div class="row g-3 mb-3"><div class="col-md-4"><label class="form-label small text-muted fw-bold">รหัสพนักงาน <span class="text-danger">*</span></label><input type="text" id="u_id" class="form-control bg-light" required></div><div class="col-md-4"><label class="form-label small text-muted fw-bold">ชื่อจริง <span class="text-danger">*</span></label><input type="text" id="u_fname" class="form-control" required></div><div class="col-md-4"><label class="form-label small text-muted fw-bold">นามสกุล <span class="text-danger">*</span></label><input type="text" id="u_lname" class="form-control" required></div></div><div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label small text-muted fw-bold">แผนก</label><input type="text" id="u_dept" class="form-control"></div><div class="col-md-6"><label class="form-label small text-muted fw-bold">เบอร์ติดต่อ</label><input type="text" id="u_phone" class="form-control"></div></div><div class="row g-3"><div class="col-md-6"><label class="form-label small text-muted fw-bold">ระดับสิทธิ์</label><select id="u_role" class="form-select"><option value="staff">พนักงานทั่วไป</option><option value="admin">ผู้ดูแลระบบ</option></select></div><div class="col-md-6"><label class="form-label small text-muted fw-bold">สถานะ</label><select id="u_status" class="form-select"><option value="active">ปกติ</option><option value="inactive">ระงับใช้งาน</option></select></div></div></div></div><div class="card border-0 shadow-sm"><div class="card-body"><p class="text-primary fw-bold small mb-3">ข้อมูลการเข้าสู่ระบบ</p><div class="row g-3"><div class="col-md-6"><label class="form-label small text-muted fw-bold">Username <span class="text-danger">*</span></label><input type="text" id="u_user" class="form-control" required autocomplete="off"></div><div class="col-md-6"><label class="form-label small text-muted fw-bold">Password <span class="text-danger">*</span></label><input type="text" id="u_pass" class="form-control" required></div></div></div></div><div class="text-end mt-4"><button type="button" class="btn btn-light border px-4 me-2 fw-bold" data-bs-dismiss="modal">ยกเลิก</button><button type="submit" class="btn btn-primary px-4 fw-bold">บันทึก</button></div></form></div></div></div></div>
+    <div class="modal fade" id="carModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow"><div class="modal-header bg-primary text-white border-0"><h5 class="modal-title fw-bold" id="car-modal-title">จัดการรถยนต์</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body p-4 bg-light"><form id="car-form"><input type="hidden" id="c_mode"><div class="card border-0 shadow-sm"><div class="card-body"><div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label small text-muted fw-bold">รหัสรถยนต์ <span class="text-danger">*</span></label><input type="text" id="c_id" class="form-control bg-light" required></div><div class="col-md-6"><label class="form-label small text-muted fw-bold">ป้ายทะเบียน <span class="text-danger">*</span></label><input type="text" id="c_license" class="form-control" required></div></div><div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label small text-muted fw-bold">ยี่ห้อ (Brand) <span class="text-danger">*</span></label><input type="text" id="c_brand" class="form-control" required></div><div class="col-md-6"><label class="form-label small text-muted fw-bold">สีรถยนต์ <span class="text-danger">*</span></label><input type="text" id="c_color" class="form-control" required></div></div><div><label class="form-label small text-muted fw-bold">สถานะรถ</label><select id="c_status" class="form-select"><option value="พร้อมใช้งาน">พร้อมใช้งาน</option><option value="กำลังซ่อมบำรุง">กำลังซ่อมบำรุง</option><option value="ปลดระวาง">ปลดระวาง</option></select></div></div></div><div class="text-end mt-4"><button type="button" class="btn btn-light border px-4 me-2 fw-bold" data-bs-dismiss="modal">ยกเลิก</button><button type="submit" class="btn btn-primary px-4 fw-bold">บันทึก</button></div></form></div></div></div></div>
+    <div class="modal fade" id="detailModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg rounded-4"><div class="modal-header bg-info text-white border-0 rounded-top-4"><h5 class="modal-title fw-bold"><i class="fas fa-file-alt me-2"></i> รายละเอียดข้อมูล</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body p-4 bg-light" id="detail-modal-body"></div><div class="modal-footer border-0 bg-light rounded-bottom-4"><button type="button" class="btn btn-secondary fw-bold px-4" data-bs-dismiss="modal">ปิดหน้าต่าง</button></div></div></div></div>
+    <div class="modal fade" id="alertModal" tabindex="-1"><div class="modal-dialog modal-sm modal-dialog-centered"><div class="modal-content text-center p-4 border-0 shadow rounded-4"><div id="alert-icon" class="mb-3"></div><h5 id="alert-title" class="fw-bold mb-2"></h5><p id="alert-desc" class="text-muted mb-4 small"></p><div id="alert-buttons" class="d-flex gap-2 justify-content-center"></div></div></div></div>
+
+    <div class="modal fade" id="approvalModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg rounded-4">
+                <div class="modal-header bg-warning border-0 rounded-top-4">
+                    <h5 class="modal-title fw-bold text-dark"><i class="fas fa-search me-2"></i> พิจารณาคำขออนุมัติซ่อม</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4 bg-light">
+                    <input type="hidden" id="approve_doc_id">
+                    
+                    <div id="approval-details"></div>
+                    
+                    <div class="mt-4 border-top pt-3">
+                        <label class="form-label fw-bold small text-dark"><i class="fas fa-edit text-primary me-1"></i> ระบุเหตุผล / หมายเหตุ (ถ้ามี)</label>
+                        <textarea id="approval-reason" class="form-control rounded-3 shadow-sm border-0" rows="3" placeholder="เช่น อนุมัติให้นำรถเข้าอู่ได้เลย หรือ ไม่อนุมัติเนื่องจาก..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 bg-light rounded-bottom-4 justify-content-center gap-2">
+                    <button type="button" class="btn btn-success fw-bold px-4 rounded-pill shadow-sm" onclick="submitApproval('approved')"><i class="fas fa-check me-1"></i> อนุมัติซ่อม</button>
+                    <button type="button" class="btn btn-danger fw-bold px-4 rounded-pill shadow-sm" onclick="submitApproval('rejected')"><i class="fas fa-times me-1"></i> ไม่อนุมัติ</button>
+                </div>
+            </div>
         </div>
-        <form id="login-form">
-            <div class="mb-3"><input type="text" id="username" class="form-control form-control-lg bg-light" placeholder="ชื่อผู้ใช้ (Username)" autocomplete="off" required></div>
-            <div class="mb-4"><input type="password" id="password" class="form-control form-control-lg bg-light" placeholder="รหัสผ่าน (Password)" required></div>
-            <button type="submit" class="btn btn-primary btn-lg w-100 fw-bold shadow-sm">เข้าสู่ระบบ <i class="fas fa-sign-in-alt ms-2"></i></button>
-            <div id="login-error" class="alert alert-danger mt-3 py-2 text-center" style="display: none; font-size: 14px;"></div>
-        </form>
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
