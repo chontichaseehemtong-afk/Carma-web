@@ -1,0 +1,233 @@
+// ==========================================
+// 1. ตั้งค่า Firebase (เอา Config ของคุณมาใส่ตรงนี้)
+// ==========================================
+const firebaseConfig = {
+    apiKey: "AIzaSyA1Kic03h8Y2HWt4zi30VupMRZJ00q0-FE",
+    authDomain: "carma-system.firebaseapp.com",
+    projectId: "carma-system",
+    storageBucket: "carma-system.firebasestorage.app",
+    messagingSenderId: "685774442982",
+    appId: "1:685774442982:web:74be11ca855e1f78b4c627",
+    measurementId: "G-V2EGGYGM8D"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const storage = firebase.storage();
+
+const ITEM_NAMES = {
+    'tire': 'สภาพลมและดอกยาง', 'brake': 'ระบบเบรคและผ้าเบรค', 'elec': 'ระบบไฟส่องสว่าง/สัญญาณ',
+    'water': 'ระดับน้ำหม้อน้ำ/รอยรั่ว', 'oil': 'ระดับและสภาพน้ำมันเครื่อง', 'battery': 'สภาพแบตเตอรี่/ขั้วแบต',
+    'wiper': 'ที่ปัดน้ำฝน/น้ำฉีดกระจก', 'trans': 'ระดับน้ำมันเกียร์', 'brkfluid': 'ระดับน้ำมันเบรก/คลัตช์',
+    'belt': 'สภาพสายพานหน้าเครื่อง', 'aircon': 'ระบบความเย็นแอร์รถยนต์', 'susp': 'ช่วงล่างและโช้คอัพ',
+    'horn': 'การทำงานของเสียงแตร', 'mirror': 'กระจกมองข้าง/หน้าต่าง', 'leak': 'รอยรั่วซึมใต้ท้องรถ'
+};
+
+let alertModal, userModal, carModal, detailModal;
+let currentRole = null, currentUserName = null, deleteType = null, deleteId = null;
+let selectedImageFile = null;
+
+// ==========================================
+// 2. ระบบรักษาความปลอดภัย (ตรวจสอบการเข้าหน้า)
+// ==========================================
+document.addEventListener('DOMContentLoaded', async () => {
+    if(document.getElementById('alertModal')) alertModal = new bootstrap.Modal(document.getElementById('alertModal'));
+    if(document.getElementById('userModal')) userModal = new bootstrap.Modal(document.getElementById('userModal'));
+    if(document.getElementById('carModal')) carModal = new bootstrap.Modal(document.getElementById('carModal'));
+    if(document.getElementById('detailModal')) detailModal = new bootstrap.Modal(document.getElementById('detailModal'));
+
+    const pageType = document.body.getAttribute('data-page');
+    let currentUser = JSON.parse(sessionStorage.getItem('carma_current_user'));
+
+    if (pageType !== 'login' && !currentUser) { window.location.href = 'index.html'; return; }
+
+    if (pageType === 'login') {
+        if (currentUser) window.location.href = currentUser.role === 'admin' ? 'admin.html' : 'staff.html';
+        try {
+            const usersSnap = await db.collection('users').limit(1).get();
+            if (usersSnap.empty) {
+                await db.collection('users').doc('ADM-001').set({ id: "ADM-001", fname: "อลิส", lname: "มาร์ติน", user: "admin", pass: "admin123", role: "admin", dept: "ฝ่ายบริหาร", phone: "089-999-9999", status: "active" });
+                await db.collection('users').doc('EMP-001').set({ id: "EMP-001", fname: "คาลอส", lname: "ไดรอน", user: "user", pass: "user123", role: "staff", dept: "แผนกจัดส่ง", phone: "081-234-5678", status: "active" });
+                await db.collection('cars').doc('CAR-001').set({ car_id: "CAR-001", license: "ตอม4448", color: "ขาว", brand: "Toyota", status: "พร้อมใช้งาน" });
+            }
+        } catch(e) {}
+    } 
+    else if (pageType === 'staff') {
+        if (currentUser.role !== 'staff') { window.location.href = 'admin.html'; return; }
+        currentUserName = `${currentUser.fname} ${currentUser.lname}`;
+        document.getElementById('staff-user-name').innerText = currentUserName;
+        if(document.getElementById('repair-name')) document.getElementById('repair-name').value = currentUserName;
+        showView('staff-check');
+        setupImageUpload();
+    } 
+    else if (pageType === 'admin') {
+        if (currentUser.role !== 'admin') { window.location.href = 'staff.html'; return; }
+        showAdminView('admin-dashboard');
+    }
+});
+
+function setupImageUpload() {
+    let imageInput = document.getElementById('repair-image');
+    let previewBox = document.getElementById('image-preview-box');
+    let previewImg = document.getElementById('image-preview');
+    let removeBtn = document.getElementById('remove-image-btn');
+
+    if (imageInput) {
+        imageInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                if (file.size > 5 * 1024 * 1024) { showAlert('error', 'ไฟล์ใหญ่เกินไป', 'ไม่เกิน 5MB'); this.value = ''; return; }
+                selectedImageFile = file;
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    previewBox.classList.add('d-none');
+                    previewImg.src = event.target.result;
+                    previewImg.classList.remove('d-none');
+                    removeBtn.classList.remove('d-none');
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+        removeBtn.addEventListener('click', function() {
+            imageInput.value = ''; selectedImageFile = null;
+            previewBox.classList.remove('d-none'); previewImg.classList.add('d-none'); this.classList.add('d-none');
+        });
+    }
+}
+
+// ==========================================
+// 3. Login
+// ==========================================
+if(document.getElementById('login-form')) {
+    document.getElementById('login-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        let userIn = document.getElementById('username').value.trim();
+        let passIn = document.getElementById('password').value.trim();
+        try {
+            const snapshot = await db.collection('users').where('user', '==', userIn).where('pass', '==', passIn).get();
+            if (!snapshot.empty) {
+                let foundUser = snapshot.docs[0].data();
+                if (foundUser.status === 'inactive') { document.getElementById('login-error').innerHTML = '<i class="fas fa-ban"></i> บัญชีถูกระงับ!'; document.getElementById('login-error').style.display = 'block'; return; }
+                sessionStorage.setItem('carma_current_user', JSON.stringify(foundUser)); 
+                window.location.href = foundUser.role === 'admin' ? 'admin.html' : 'staff.html';
+            } else { document.getElementById('login-error').innerHTML = '<i class="fas fa-exclamation-triangle"></i> ข้อมูลไม่ถูกต้อง!'; document.getElementById('login-error').style.display = 'block'; }
+        } catch (err) { document.getElementById('login-error').innerHTML = '<i class="fas fa-wifi"></i> เชื่อมต่อฐานข้อมูลไม่ได้'; document.getElementById('login-error').style.display = 'block'; }
+    });
+}
+
+// ==========================================
+// 4. Staff
+// ==========================================
+function showView(section) {
+    document.querySelectorAll('.content-section').forEach(sec => sec.style.display = 'none');
+    document.querySelectorAll('.sidebar-menu .nav-link').forEach(link => link.classList.remove('active'));
+    let content = document.getElementById(section + '-content');
+    if(content) {
+        content.style.display = 'block'; document.getElementById(section + '-menu').classList.add('active');
+        if(section === 'staff-check') loadStaffCheckItems(); if(section === 'staff-status') loadStaffStatusTable();
+        let titles = {'staff-check':{t:'บันทึกตรวจเช็ค',d:'ตรวจสอบรายการ 15 ข้อ',i:'fa-clipboard-check'},'staff-repair':{t:'แจ้งซ่อม',d:'ขออนุมัติซ่อม',i:'fa-tools'},'staff-status':{t:'สถานะงาน',d:'ติดตามการทำงาน',i:'fa-tasks'}};
+        if(titles[section]) { document.getElementById('staff-content-title').innerText = titles[section].t; document.getElementById('staff-content-desc').innerText = titles[section].d; document.getElementById('staff-header-icon').className = 'fas ' + titles[section].i; }
+    }
+}
+
+async function loadStaffCheckItems() {
+    let container = document.getElementById('check-items-list'); if(!container) return; container.innerHTML = '';
+    Object.keys(ITEM_NAMES).forEach(id => { container.innerHTML += `<div class="col-md-6 mb-2"><div class="p-3 border rounded bg-light d-flex justify-content-between align-items-center"><span class="fw-bold text-secondary small">${ITEM_NAMES[id]}</span><div><div class="form-check form-check-inline text-success"><input class="form-check-input" type="radio" name="chk_${id}" id="p_${id}" value="pass" checked><label class="form-check-label fw-bold small" for="p_${id}">ปกติ</label></div><div class="form-check form-check-inline text-danger m-0"><input class="form-check-input" type="radio" name="chk_${id}" id="f_${id}" value="fail"><label class="form-check-label fw-bold small" for="f_${id}">ไม่ปกติ</label></div></div></div></div>`; });
+}
+
+if(document.getElementById('staff-check-form')) {
+    document.getElementById('staff-check-form').addEventListener('submit', async function(e) {
+        e.preventDefault(); let isPass = true; let defectsList = []; 
+        new FormData(this).forEach((v, k) => { if(k.startsWith('chk_') && v === 'fail') { isPass = false; defectsList.push(ITEM_NAMES[k.replace('chk_', '')]); } });
+        await db.collection('checks').add({ car_id: document.getElementById('check-carid').value, license: document.getElementById('check-license').value, color: document.getElementById('check-color').value, status: isPass ? "ปกติ" : "พบจุดบกพร่อง", defects: defectsList, date: new Date().toLocaleDateString('th-TH'), staff: currentUserName, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+        showAlert('success', 'บันทึกสำเร็จ!', 'ข้อมูลถูกบันทึกเรียบร้อย'); this.reset(); loadStaffCheckItems(); 
+    });
+}
+
+if(document.getElementById('staff-repair-form')) {
+    document.getElementById('staff-repair-form').addEventListener('submit', async function(e) {
+        e.preventDefault(); 
+        let submitBtn = this.querySelector('button[type="submit"]'); let originalText = submitBtn.innerHTML; submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> กำลังส่ง...';
+        try {
+            let imageUrl = null;
+            if (selectedImageFile) {
+                const storageRef = storage.ref(`repairs/${Date.now()}_${selectedImageFile.name}`);
+                const uploadTask = await storageRef.put(selectedImageFile);
+                imageUrl = await uploadTask.ref.getDownloadURL();
+            }
+            await db.collection('repairs').add({ license: document.getElementById('repair-license').value, name: currentUserName, dept: document.getElementById('repair-dept').value, detail: document.getElementById('repair-detail').value, priority: document.getElementById('repair-priority').value, imageUrl: imageUrl, date: new Date().toLocaleDateString('th-TH'), status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+            showAlert('success', 'ส่งคำขอสำเร็จ!', ''); this.reset(); document.getElementById('repair-name').value = currentUserName; if(document.getElementById('remove-image-btn')) document.getElementById('remove-image-btn').click();
+        } catch (err) { showAlert('error', 'ข้อผิดพลาด', err.message); } finally { submitBtn.disabled = false; submitBtn.innerHTML = originalText; }
+    });
+}
+
+async function loadStaffStatusTable() {
+    let tbody = document.getElementById('staff-status-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div>กำลังโหลด...</td></tr>';
+    try {
+        let repairsSnap = await db.collection('repairs').where('name', '==', currentUserName).get();
+        let checksSnap = await db.collection('checks').where('staff', '==', currentUserName).get();
+        tbody.innerHTML = ''; let rowNum = 1;
+        repairsSnap.forEach(doc => { let r = doc.data(); let bClass = r.status === 'pending' ? 'bg-warning text-dark' : (r.status === 'approved' ? 'bg-success' : 'bg-danger'); let sText = r.status === 'pending' ? 'รออนุมัติ' : (r.status === 'approved' ? 'อนุมัติแล้ว' : 'ปฏิเสธ'); tbody.innerHTML += `<tr><td class="text-center text-muted fw-bold">${rowNum++}</td><td>${r.date}</td><td><span class="fw-bold text-primary">${r.license}</span></td><td>แจ้งซ่อม</td><td>${r.detail.substring(0,20)}...</td><td class="text-center"><span class="badge ${bClass}">${sText}</span></td><td class="text-center"><button onclick="viewDetails('repair', '${doc.id}')" class="btn btn-sm btn-info text-white"><i class="fas fa-search"></i></button></td></tr>`; });
+        checksSnap.forEach(doc => { let c = doc.data(); let sColor = c.status === 'ปกติ' ? 'text-success' : 'text-danger'; tbody.innerHTML += `<tr><td class="text-center text-muted fw-bold">${rowNum++}</td><td>${c.date}</td><td><span class="fw-bold text-primary">${c.license}</span></td><td>ตรวจเช็ค</td><td><span class="${sColor} fw-bold">${c.status}</span></td><td class="text-center"><span class="badge bg-primary">บันทึกสำเร็จ</span></td><td class="text-center"><button onclick="viewDetails('check', '${doc.id}')" class="btn btn-sm btn-info text-white"><i class="fas fa-search"></i></button></td></tr>`; });
+        if (rowNum === 1) tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-muted">ไม่มีประวัติการทำงาน</td></tr>`;
+    } catch (e) { tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-danger">โหลดข้อมูลไม่ได้</td></tr>`; }
+}
+
+// ==========================================
+// 5. Admin
+// ==========================================
+function showAdminView(section) {
+    document.querySelectorAll('.content-section').forEach(sec => sec.style.display = 'none');
+    document.querySelectorAll('.sidebar-menu .nav-link').forEach(link => link.classList.remove('active'));
+    let content = document.getElementById(section + '-content');
+    if(content) {
+        content.style.display = 'block'; document.getElementById(section + '-menu').classList.add('active');
+        if(section === 'admin-dashboard') loadAdminDashboard(); if(section === 'admin-users') loadAdminUsersTable(); if(section === 'admin-cars') loadAdminCarsTable(); if(section === 'admin-repairs') loadAdminRepairsTable(); if(section === 'admin-reports') loadAdminReportsTable();
+        let titles = {'admin-dashboard':{t:'แดชบอร์ด',d:'สถิติรวม',i:'fa-tachometer-alt'},'admin-users':{t:'จัดการผู้ใช้',d:'บัญชีพนักงาน',i:'fa-users-cog'},'admin-cars':{t:'จัดการรถยนต์',d:'ฐานข้อมูลรถยนต์',i:'fa-car'},'admin-repairs':{t:'อนุมัติซ่อม',d:'รายการรออนุมัติ',i:'fa-clipboard-check'},'admin-reports':{t:'รายงาน',d:'ประวัติทั้งหมด',i:'fa-file-invoice'}};
+        if(titles[section]) { document.getElementById('admin-content-title').innerText = titles[section].t; document.getElementById('admin-content-desc').innerText = titles[section].d; document.getElementById('admin-header-icon').className = 'fas ' + titles[section].i; }
+    }
+}
+
+async function loadAdminDashboard() { try { let uSnap = await db.collection('users').get(); document.getElementById('dashboard-users').innerText = uSnap.size; let cSnap = await db.collection('cars').get(); document.getElementById('dashboard-cars').innerText = cSnap.size; let rSnap = await db.collection('repairs').where('status', '==', 'pending').get(); document.getElementById('dashboard-repairs-pending').innerText = rSnap.size; } catch(e) {} }
+async function loadAdminUsersTable() { let tbody = document.getElementById('admin-users-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div>กำลังโหลด...</td></tr>'; try { let snapshot = await db.collection('users').get(); tbody.innerHTML = ''; snapshot.forEach(doc => { let u = doc.data(); let rBadge = u.role === 'admin' ? '<span class="badge bg-primary">แอดมิน</span>' : '<span class="badge bg-secondary">พนักงาน</span>'; let statB = u.status === 'active' ? '<span class="badge bg-success">ปกติ</span>' : '<span class="badge bg-danger">ระงับ</span>'; tbody.innerHTML += `<tr><td class="text-muted small px-4">${u.id}</td><td><div class="fw-bold text-primary">${u.fname} ${u.lname}</div><div class="small text-muted"><i class="fas fa-user-circle"></i> ${u.user}</div></td><td>${u.dept || '-'}</td><td><i class="fas fa-phone-alt text-muted"></i> ${u.phone || '-'}</td><td>${rBadge} ${statB}</td><td class="text-end px-4"><button onclick="openUserModal('${doc.id}')" class="btn btn-sm btn-light border me-1"><i class="fas fa-edit text-muted"></i></button><button onclick="confirmDelete('users', '${doc.id}')" class="btn btn-sm btn-light border"><i class="fas fa-trash text-danger"></i></button></td></tr>`; }); } catch(e) {} }
+async function openUserModal(docId) { document.getElementById('user-form').reset(); if(docId && docId !== 'null') { document.getElementById('u_mode').value = docId; document.getElementById('u_id').readOnly = true; document.getElementById('u_id').classList.add('bg-light'); let doc = await db.collection('users').doc(docId).get(); if(doc.exists) { let user = doc.data(); document.getElementById('u_id').value = user.id; document.getElementById('u_fname').value = user.fname; document.getElementById('u_lname').value = user.lname; document.getElementById('u_dept').value = user.dept || ''; document.getElementById('u_phone').value = user.phone || ''; document.getElementById('u_role').value = user.role || 'staff'; document.getElementById('u_status').value = user.status || 'active'; document.getElementById('u_user').value = user.user; document.getElementById('u_pass').value = user.pass; } } else { document.getElementById('u_mode').value = 'add'; document.getElementById('u_id').readOnly = false; document.getElementById('u_id').classList.remove('bg-light'); document.getElementById('u_id').value = "EMP-" + Date.now().toString().slice(-4); } userModal.show(); }
+if(document.getElementById('user-form')){ document.getElementById('user-form').addEventListener('submit', async function(e) { e.preventDefault(); let mode = document.getElementById('u_mode').value; let userData = { id: document.getElementById('u_id').value.trim(), fname: document.getElementById('u_fname').value.trim(), lname: document.getElementById('u_lname').value.trim(), dept: document.getElementById('u_dept').value.trim(), phone: document.getElementById('u_phone').value.trim(), role: document.getElementById('u_role').value, status: document.getElementById('u_status').value, user: document.getElementById('u_user').value.trim(), pass: document.getElementById('u_pass').value.trim() }; try { if(mode === 'add') { await db.collection('users').add(userData); showAlert('success', 'เพิ่มพนักงานสำเร็จ', ''); } else { await db.collection('users').doc(mode).update(userData); showAlert('success', 'อัปเดตสำเร็จ', ''); } loadAdminUsersTable(); userModal.hide(); } catch(e) { showAlert('error', 'เกิดข้อผิดพลาด', e.message); } }); }
+async function loadAdminCarsTable() { let tbody = document.getElementById('admin-cars-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div>กำลังโหลด...</td></tr>'; try { let snapshot = await db.collection('cars').get(); tbody.innerHTML = ''; snapshot.forEach(doc => { let c = doc.data(); let sColor = c.status === 'พร้อมใช้งาน' ? 'text-success' : (c.status === 'กำลังซ่อมบำรุง' ? 'text-warning' : 'text-danger'); tbody.innerHTML += `<tr><td class="text-muted small px-4">${c.car_id}</td><td><span class="badge bg-light text-dark border fs-6">${c.license}</span></td><td>${c.brand || '-'}</td><td>${c.color || '-'}</td><td><span class="${sColor} fw-bold"><i class="fas fa-circle" style="font-size:10px;"></i> ${c.status}</span></td><td class="text-end px-4"><button onclick="openCarModal('${doc.id}')" class="btn btn-sm btn-light border me-1"><i class="fas fa-edit text-muted"></i></button><button onclick="confirmDelete('cars', '${doc.id}')" class="btn btn-sm btn-light border"><i class="fas fa-trash text-danger"></i></button></td></tr>`; }); } catch(e) {} }
+async function openCarModal(docId) { document.getElementById('car-form').reset(); if(docId && docId !== 'null') { document.getElementById('c_mode').value = docId; document.getElementById('c_id').readOnly = true; document.getElementById('c_id').classList.add('bg-light'); let doc = await db.collection('cars').doc(docId).get(); if(doc.exists) { let car = doc.data(); document.getElementById('c_id').value = car.car_id; document.getElementById('c_license').value = car.license; document.getElementById('c_color').value = car.color || ''; document.getElementById('c_brand').value = car.brand || ''; document.getElementById('c_status').value = car.status || 'พร้อมใช้งาน'; } } else { document.getElementById('c_mode').value = 'add'; document.getElementById('c_id').readOnly = false; document.getElementById('c_id').classList.remove('bg-light'); document.getElementById('c_id').value = "CAR-" + Date.now().toString().slice(-4); } carModal.show(); }
+if(document.getElementById('car-form')){ document.getElementById('car-form').addEventListener('submit', async function(e) { e.preventDefault(); let mode = document.getElementById('c_mode').value; let carData = { car_id: document.getElementById('c_id').value.trim(), license: document.getElementById('c_license').value.trim(), color: document.getElementById('c_color').value.trim(), brand: document.getElementById('c_brand').value.trim(), status: document.getElementById('c_status').value }; try { if(mode === 'add') { await db.collection('cars').add(carData); showAlert('success', 'เพิ่มรถยนต์สำเร็จ', ''); } else { await db.collection('cars').doc(mode).update(carData); showAlert('success', 'อัปเดตรถยนต์สำเร็จ', ''); } loadAdminCarsTable(); carModal.hide(); } catch(e) { showAlert('error', 'เกิดข้อผิดพลาด', e.message); } }); }
+async function loadAdminRepairsTable() { let tbody = document.getElementById('admin-repairs-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div>กำลังโหลด...</td></tr>'; try { let snapshot = await db.collection('repairs').where('status', '==', 'pending').get(); tbody.innerHTML = ''; if(snapshot.empty) { tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted">ไม่มีรายการรออนุมัติ</td></tr>`; return; } snapshot.forEach(doc => { let r = doc.data(); tbody.innerHTML += `<tr><td class="px-4 text-muted small">${r.date}</td><td><span class="fw-bold text-primary">${r.license}</span></td><td>${r.name}<br><small class="text-muted">${r.dept}</small></td><td>${r.detail}</td><td class="text-center px-4"><div class="d-flex justify-content-center gap-2"><button onclick="updateRepairStatus('${doc.id}', 'approved')" class="btn btn-sm btn-success"><i class="fas fa-check"></i> อนุมัติ</button><button onclick="updateRepairStatus('${doc.id}', 'rejected')" class="btn btn-sm btn-danger"><i class="fas fa-times"></i></button></div></td></tr>`; }); } catch(e) {} }
+async function updateRepairStatus(docId, stat) { try { await db.collection('repairs').doc(docId).update({ status: stat }); loadAdminRepairsTable(); loadAdminDashboard(); showAlert('success', 'บันทึกสถานะสำเร็จ', ''); } catch(e) { showAlert('error', 'ข้อผิดพลาด', e.message); } }
+async function loadAdminReportsTable() { let tbody = document.getElementById('admin-reports-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div>กำลังโหลด...</td></tr>'; try { let snapshot = await db.collection('checks').orderBy('timestamp', 'desc').get(); tbody.innerHTML = ''; if(snapshot.empty) { tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">ไม่มีข้อมูลประวัติ</td></tr>`; return; } snapshot.forEach((doc) => { let r = doc.data(); let badge = r.status === 'ปกติ' ? 'bg-success' : 'bg-danger'; tbody.innerHTML += `<tr><td class="px-4 text-muted small">${r.date}</td><td><span class="fw-bold">${r.license}</span></td><td class="text-muted">${r.car_id}</td><td>${r.staff}</td><td class="px-4"><span class="badge ${badge}">${r.status}</span></td><td class="text-center px-4"><button onclick="viewDetails('check', '${doc.id}')" class="btn btn-sm btn-info text-white"><i class="fas fa-search"></i></button></td></tr>`; }); } catch(e) {} }
+
+// ==========================================
+// 6. View Details (แว่นขยาย โชว์รูปได้ด้วย)
+// ==========================================
+async function viewDetails(type, docId) {
+    let body = document.getElementById('detail-modal-body'); if(!body) return; 
+    body.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted small">กำลังโหลดข้อมูล...</p></div>';
+    if(!detailModal) detailModal = new bootstrap.Modal(document.getElementById('detailModal')); detailModal.show();
+    try {
+        if(type === 'check') {
+            let doc = await db.collection('checks').doc(docId).get();
+            if(doc.exists) {
+                let data = doc.data(); let statusColor = data.status === 'ปกติ' ? 'text-success' : 'text-danger'; let defectsHtml = '';
+                if (data.status !== 'ปกติ' && data.defects && data.defects.length > 0) { let list = data.defects.map(d => `<li class="mb-1"><i class="fas fa-times-circle text-danger me-2"></i>${d}</li>`).join(''); defectsHtml = `<div class="mt-3"><div class="text-danger small fw-bold mb-2">รายการที่พบจุดบกพร่อง:</div><ul class="list-unstyled small bg-danger bg-opacity-10 p-3 rounded-3 border border-danger border-opacity-25">${list}</ul></div>`; }
+                body.innerHTML = `<div class="p-3 bg-white rounded shadow-sm"><h6 class="fw-bold text-primary border-bottom pb-2 mb-3"><i class="fas fa-clipboard-check me-2"></i> ข้อมูลตรวจเช็คสภาพ</h6><div class="row mb-2"><div class="col-5 text-muted small">วันที่:</div><div class="col-7 fw-bold">${data.date || '-'}</div></div><div class="row mb-2"><div class="col-5 text-muted small">ทะเบียน:</div><div class="col-7 fw-bold text-primary">${data.license || '-'}</div></div><div class="row mb-2"><div class="col-5 text-muted small">รหัสรถ:</div><div class="col-7">${data.car_id || '-'}</div></div><div class="row mb-2"><div class="col-5 text-muted small">ผู้ตรวจสอบ:</div><div class="col-7">${data.staff || '-'}</div></div><div class="row mt-3"><div class="col-5 text-muted small">ผลประเมินรวม:</div><div class="col-7 fw-bold ${statusColor}">${data.status || '-'}</div></div>${defectsHtml}</div>`;
+            } else { body.innerHTML = '<div class="alert alert-danger">ไม่พบข้อมูลในฐานข้อมูล</div>'; }
+        } else if(type === 'repair') {
+            let doc = await db.collection('repairs').doc(docId).get();
+            if(doc.exists) {
+                let data = doc.data(); let sText = data.status === 'pending' ? 'รออนุมัติ' : (data.status === 'approved' ? 'อนุมัติแล้ว' : 'ปฏิเสธ'); let bClass = data.status === 'pending' ? 'text-warning' : (data.status === 'approved' ? 'text-success' : 'text-danger');
+                let imgHtml = data.imageUrl ? `<div class="text-center mb-3"><img src="${data.imageUrl}" class="img-fluid rounded border border-primary p-1" style="max-height: 250px;"></div>` : '';
+                body.innerHTML = `<div class="p-3 bg-white rounded shadow-sm"><h6 class="fw-bold text-primary border-bottom pb-2 mb-3"><i class="fas fa-tools me-2"></i> ข้อมูลแจ้งซ่อมบำรุง</h6>${imgHtml}<div class="row mb-2"><div class="col-5 text-muted small">วันที่:</div><div class="col-7 fw-bold">${data.date || '-'}</div></div><div class="row mb-2"><div class="col-5 text-muted small">ทะเบียน:</div><div class="col-7 fw-bold text-primary">${data.license || '-'}</div></div><div class="row mb-2"><div class="col-5 text-muted small">ผู้แจ้ง:</div><div class="col-7">${data.name || '-'} <span class="text-muted small">(${data.dept || ''})</span></div></div><div class="row mb-3"><div class="col-5 text-muted small">สถานะ:</div><div class="col-7 fw-bold ${bClass}">${sText}</div></div><div class="mt-2"><div class="text-muted small mb-1">อาการเสีย:</div><div class="p-2 bg-light border rounded" style="font-size: 14px;">${data.detail || '-'}</div></div></div>`;
+            } else { body.innerHTML = '<div class="alert alert-danger">ไม่พบข้อมูลในฐานข้อมูล</div>'; }
+        }
+    } catch(err) { body.innerHTML = '<div class="alert alert-danger">เกิดข้อผิดพลาดในการดึงข้อมูล</div>'; }
+}
+
+function filterTable(inputId, tableId) { let input = document.getElementById(inputId).value.toLowerCase(); let tbody = document.getElementById(tableId).getElementsByTagName('tbody')[0]; if(tbody) Array.from(tbody.getElementsByTagName('tr')).forEach(tr => { tr.style.display = tr.innerText.toLowerCase().includes(input) ? '' : 'none'; }); }
+function showAlert(type, title, desc) { document.getElementById('alert-title').innerText = title; document.getElementById('alert-desc').innerText = desc; let icon = document.getElementById('alert-icon'), btn = document.getElementById('alert-buttons'); if(type === 'success') { icon.innerHTML = '<i class="fas fa-check-circle text-success" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-success w-100 fw-bold" data-bs-dismiss="modal">ตกลง</button>`; } else if(type === 'error') { icon.innerHTML = '<i class="fas fa-exclamation-circle text-danger" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-danger w-100 fw-bold" data-bs-dismiss="modal">ตกลง</button>`; } else if(type === 'delete') { icon.innerHTML = '<i class="fas fa-trash-alt text-danger" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-danger w-50 fw-bold" onclick="executeDelete()">ลบเลย</button><button class="btn btn-light border w-50 fw-bold" data-bs-dismiss="modal">ยกเลิก</button>`; } else if(type === 'logout') { icon.innerHTML = '<i class="fas fa-sign-out-alt text-warning" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-danger w-50 fw-bold" onclick="logout()">ออกจากระบบ</button><button class="btn btn-light border w-50 fw-bold" data-bs-dismiss="modal">ยกเลิก</button>`; } if(!alertModal) alertModal = new bootstrap.Modal(document.getElementById('alertModal')); alertModal.show(); }
+function confirmDelete(type, docId) { deleteType = type; deleteId = docId; showAlert('delete', 'ยืนยันการลบ?', 'ข้อมูลที่ลบจะไม่สามารถกู้คืนได้'); }
+async function executeDelete() { try { await db.collection(deleteType).doc(deleteId).delete(); if(deleteType === 'users') loadAdminUsersTable(); if(deleteType === 'cars') loadAdminCarsTable(); loadAdminDashboard(); alertModal.hide(); setTimeout(() => showAlert('success', 'ลบข้อมูลสำเร็จ', ''), 300); } catch(err) { alertModal.hide(); setTimeout(() => showAlert('error', 'ลบไม่สำเร็จ', 'เช็คสิทธิ์ Firebase Rule'), 300); } }
+function showLogoutModal() { showAlert('logout', 'ยืนยันออกจากระบบ?', 'คุณต้องการสิ้นสุดการทำงานใช่หรือไม่'); }
+function logout() { sessionStorage.removeItem('carma_current_user'); window.location.href = 'index.html'; }
