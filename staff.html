@@ -41,9 +41,20 @@
                         <div class="card-header bg-white border-bottom-0 pt-4 pb-0"><h5 class="fw-bold text-primary"><i class="fas fa-car me-2"></i> 1. ข้อมูลรถยนต์</h5></div>
                         <div class="card-body">
                             <div class="row g-3">
-                                <div class="col-md-4"><label class="form-label text-muted small fw-bold">ทะเบียนรถ <span class="text-danger">*</span></label><input type="text" id="check-license" class="form-control bg-light" required></div>
-                                <div class="col-md-4"><label class="form-label text-muted small fw-bold">รหัสรถ <span class="text-danger">*</span></label><input type="text" id="check-carid" class="form-control bg-light" required></div>
-                                <div class="col-md-4"><label class="form-label text-muted small fw-bold">สีรถ <span class="text-danger">*</span></label><input type="text" id="check-color" class="form-control bg-light" required></div>
+                                <div class="col-md-4">
+                                    <label class="form-label text-muted small fw-bold">ทะเบียนรถ <span class="text-danger">*</span></label>
+                                    <select id="check-license" class="form-select bg-light border-primary" required>
+                                        <option value="" selected disabled>-- กำลังโหลดป้ายทะเบียน... --</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label text-muted small fw-bold">รหัสรถ <span class="text-danger">*</span></label>
+                                    <input type="text" id="check-carid" class="form-control" style="background:#e9ecef;" readonly required placeholder="ระบบจะดึงมาอัตโนมัติ">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label text-muted small fw-bold">สีรถ <span class="text-danger">*</span></label>
+                                    <input type="text" id="check-color" class="form-control" style="background:#e9ecef;" readonly required placeholder="ระบบจะดึงมาอัตโนมัติ">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -79,7 +90,12 @@
                                 </div>
                                 <div class="col-md-8 col-lg-9">
                                     <div class="row g-3 mb-3">
-                                        <div class="col-sm-6"><label class="form-label text-muted small fw-bold">ทะเบียนรถยนต์ <span class="text-danger">*</span></label><input type="text" id="repair-license" class="form-control bg-light" required></div>
+                                        <div class="col-sm-6">
+                                            <label class="form-label text-muted small fw-bold">ทะเบียนรถยนต์ <span class="text-danger">*</span></label>
+                                            <select id="repair-license" class="form-select bg-light border-primary" required>
+                                                <option value="" selected disabled>-- กำลังโหลดป้ายทะเบียน... --</option>
+                                            </select>
+                                        </div>
                                         <div class="col-sm-6"><label class="form-label text-muted small fw-bold">ชื่อผู้แจ้งซ่อม</label><input type="text" id="repair-name" class="form-control" style="background:#e9ecef;" readonly></div>
                                     </div>
                                     <div class="mb-3"><label class="form-label text-muted small fw-bold">แผนก/ฝ่าย <span class="text-danger">*</span></label><input type="text" id="repair-dept" class="form-control bg-light" required></div>
