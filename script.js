@@ -31,7 +31,6 @@ let selectedImageFile = null;
 // 2. ระบบรักษาความปลอดภัย (ตรวจสอบการเข้าหน้า)
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
-    // กำหนดตัวแปร Modals ให้พร้อมใช้งาน
     if(document.getElementById('alertModal')) alertModal = new bootstrap.Modal(document.getElementById('alertModal'));
     if(document.getElementById('userModal')) userModal = new bootstrap.Modal(document.getElementById('userModal'));
     if(document.getElementById('carModal')) carModal = new bootstrap.Modal(document.getElementById('carModal'));
@@ -61,10 +60,52 @@ document.addEventListener('DOMContentLoaded', async () => {
         if(document.getElementById('repair-name')) document.getElementById('repair-name').value = currentUserName;
         showView('staff-check');
         setupImageUpload();
+        
+        // 🌟 ดึงข้อมูลป้ายทะเบียนรถจากฐานข้อมูลมาแสดงใน Dropdown ให้พนักงาน
+        loadCarsForStaff();
     } 
     else if (pageType === 'admin') {
         if (currentUser.role !== 'admin') { window.location.href = 'staff.html'; return; }
         showAdminView('admin-dashboard');
+    }
+});
+
+// ==========================================
+// 🌟 ฟังก์ชันดึงข้อมูลป้ายทะเบียนรถจาก Admin มาให้ Staff เลือก
+// ==========================================
+async function loadCarsForStaff() {
+    const checkLicenseSelect = document.getElementById('check-license');
+    const repairLicenseSelect = document.getElementById('repair-license');
+    
+    if (!checkLicenseSelect && !repairLicenseSelect) return;
+
+    try {
+        const snapshot = await db.collection('cars').get();
+        let options = '<option value="" selected disabled>-- โปรดเลือกป้ายทะเบียน --</option>';
+        
+        snapshot.forEach(doc => {
+            const car = doc.data();
+            // ไม่แสดงรถที่ปลดระวาง
+            if (car.status !== 'ปลดระวาง' && car.status !== 'inactive') {
+                options += `<option value="${car.license}" data-id="${car.car_id}" data-color="${car.color || '-'}">${car.license} (${car.brand || '-'})</option>`;
+            }
+        });
+
+        // นำข้อมูลไปใส่ในหน้าบันทึกตรวจเช็ค และ แจ้งซ่อม
+        if (checkLicenseSelect) checkLicenseSelect.innerHTML = options;
+        if (repairLicenseSelect) repairLicenseSelect.innerHTML = options;
+
+    } catch (error) {
+        console.error('โหลดข้อมูลรถล้มเหลว:', error);
+    }
+}
+
+// 🌟 ทำระบบ Auto-fill เมื่อพนักงานเลือกป้ายทะเบียน (เฉพาะหน้าตรวจเช็ค)
+document.addEventListener('change', function(e) {
+    if(e.target && e.target.id === 'check-license') {
+        const selectedOption = e.target.options[e.target.selectedIndex];
+        document.getElementById('check-carid').value = selectedOption.getAttribute('data-id') || '';
+        document.getElementById('check-color').value = selectedOption.getAttribute('data-color') || '';
     }
 });
 
@@ -146,11 +187,9 @@ if(document.getElementById('staff-check-form')) {
     });
 }
 
-// --- บันทึกการแจ้งซ่อม (แก้ไขพรีวิวรูปร้างแล้ว) ---
 if(document.getElementById('staff-repair-form')) {
     document.getElementById('staff-repair-form').addEventListener('submit', async function(e) {
         e.preventDefault(); 
-        
         let submitBtn = this.querySelector('button[type="submit"]');
         let originalText = submitBtn.innerHTML;
         submitBtn.disabled = true;
@@ -180,7 +219,7 @@ if(document.getElementById('staff-repair-form')) {
                 detail: document.getElementById('repair-detail').value, 
                 priority: document.getElementById('repair-priority').value,
                 imageUrl: imageUrl, 
-                adminReason: "", // เตรียมฟิลด์เหตุผลไว้ให้แอดมิน
+                adminReason: "",
                 date: new Date().toLocaleDateString('th-TH'), 
                 status: "pending", 
                 timestamp: firebase.firestore.FieldValue.serverTimestamp() 
@@ -191,7 +230,6 @@ if(document.getElementById('staff-repair-form')) {
             this.reset(); 
             document.getElementById('repair-name').value = currentUserName;
             
-            // ซ่อนรูปที่พรีวิวไว้
             document.getElementById('image-preview-box').classList.remove('d-none');
             document.getElementById('image-preview').classList.add('d-none');
             document.getElementById('image-preview').src = '';
@@ -239,7 +277,6 @@ async function loadAdminCarsTable() { let tbody = document.getElementById('admin
 async function openCarModal(docId) { document.getElementById('car-form').reset(); if(docId && docId !== 'null') { document.getElementById('c_mode').value = docId; document.getElementById('c_id').readOnly = true; document.getElementById('c_id').classList.add('bg-light'); let doc = await db.collection('cars').doc(docId).get(); if(doc.exists) { let car = doc.data(); document.getElementById('c_id').value = car.car_id; document.getElementById('c_license').value = car.license; document.getElementById('c_color').value = car.color || ''; document.getElementById('c_brand').value = car.brand || ''; document.getElementById('c_status').value = car.status || 'พร้อมใช้งาน'; } } else { document.getElementById('c_mode').value = 'add'; document.getElementById('c_id').readOnly = false; document.getElementById('c_id').classList.remove('bg-light'); document.getElementById('c_id').value = "CAR-" + Date.now().toString().slice(-4); } carModal.show(); }
 if(document.getElementById('car-form')){ document.getElementById('car-form').addEventListener('submit', async function(e) { e.preventDefault(); let mode = document.getElementById('c_mode').value; let carData = { car_id: document.getElementById('c_id').value.trim(), license: document.getElementById('c_license').value.trim(), color: document.getElementById('c_color').value.trim(), brand: document.getElementById('c_brand').value.trim(), status: document.getElementById('c_status').value }; try { if(mode === 'add') { await db.collection('cars').add(carData); showAlert('success', 'เพิ่มรถยนต์สำเร็จ', ''); } else { await db.collection('cars').doc(mode).update(carData); showAlert('success', 'อัปเดตรถยนต์สำเร็จ', ''); } loadAdminCarsTable(); carModal.hide(); } catch(e) { showAlert('error', 'เกิดข้อผิดพลาด', e.message); } }); }
 
-// --- โหลดตารางซ่อม และสร้างปุ่ม พิจารณา ---
 async function loadAdminRepairsTable() { 
     let tbody = document.getElementById('admin-repairs-table').getElementsByTagName('tbody')[0]; 
     if(!tbody) return; 
@@ -255,7 +292,6 @@ async function loadAdminRepairsTable() {
     } catch(e) {} 
 }
 
-// --- เปิดหน้าต่างพิจารณาของ Admin ---
 async function openApprovalModal(docId) {
     if(!approvalModal) approvalModal = new bootstrap.Modal(document.getElementById('approvalModal'));
     
@@ -288,7 +324,6 @@ async function openApprovalModal(docId) {
     }
 }
 
-// --- ส่งผลการพิจารณา (อนุมัติ / ไม่อนุมัติ พร้อมเหตุผล) ---
 async function submitApproval(stat) { 
     let docId = document.getElementById('approve_doc_id').value;
     let reason = document.getElementById('approval-reason').value.trim();
@@ -306,9 +341,6 @@ async function submitApproval(stat) {
 
 async function loadAdminReportsTable() { let tbody = document.getElementById('admin-reports-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div>กำลังโหลด...</td></tr>'; try { let snapshot = await db.collection('checks').orderBy('timestamp', 'desc').get(); tbody.innerHTML = ''; if(snapshot.empty) { tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">ไม่มีข้อมูลประวัติ</td></tr>`; return; } snapshot.forEach((doc) => { let r = doc.data(); let badge = r.status === 'ปกติ' ? 'bg-success' : 'bg-danger'; tbody.innerHTML += `<tr><td class="px-4 text-muted small">${r.date}</td><td><span class="fw-bold">${r.license}</span></td><td class="text-muted">${r.car_id}</td><td>${r.staff}</td><td class="px-4"><span class="badge ${badge}">${r.status}</span></td><td class="text-center px-4"><button onclick="viewDetails('check', '${doc.id}')" class="btn btn-sm btn-info text-white"><i class="fas fa-search"></i></button></td></tr>`; }); } catch(e) {} }
 
-// ==========================================
-// 6. View Details (หน้าต่างแสดงรายละเอียด และเหตุผลแอดมิน)
-// ==========================================
 async function viewDetails(type, docId) {
     let body = document.getElementById('detail-modal-body'); 
     if(!body) return; 
