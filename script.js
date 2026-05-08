@@ -60,18 +60,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         if(document.getElementById('repair-name')) document.getElementById('repair-name').value = currentUserName;
         showView('staff-check');
         setupImageUpload();
-        
-        // 🌟 ดึงข้อมูลป้ายทะเบียนรถจากฐานข้อมูลมาแสดงใน Dropdown ให้พนักงาน
         loadCarsForStaff();
     } 
     else if (pageType === 'admin') {
         if (currentUser.role !== 'admin') { window.location.href = 'staff.html'; return; }
-        showAdminView('admin-dashboard');
+        // 🌟 เปลี่ยนให้พอ Admin ล็อกอินเข้ามา จะเจอหน้า 'อนุมัติซ่อม' ทันที
+        showAdminView('admin-repairs');
     }
 });
 
 // ==========================================
-// 🌟 ฟังก์ชันดึงข้อมูลป้ายทะเบียนรถจาก Admin มาให้ Staff เลือก
+// ฟังก์ชันดึงข้อมูลป้ายทะเบียนรถจาก Admin มาให้ Staff เลือก
 // ==========================================
 async function loadCarsForStaff() {
     const checkLicenseSelect = document.getElementById('check-license');
@@ -85,13 +84,11 @@ async function loadCarsForStaff() {
         
         snapshot.forEach(doc => {
             const car = doc.data();
-            // ไม่แสดงรถที่ปลดระวาง
             if (car.status !== 'ปลดระวาง' && car.status !== 'inactive') {
                 options += `<option value="${car.license}" data-id="${car.car_id}" data-color="${car.color || '-'}">${car.license} (${car.brand || '-'})</option>`;
             }
         });
 
-        // นำข้อมูลไปใส่ในหน้าบันทึกตรวจเช็ค และ แจ้งซ่อม
         if (checkLicenseSelect) checkLicenseSelect.innerHTML = options;
         if (repairLicenseSelect) repairLicenseSelect.innerHTML = options;
 
@@ -100,7 +97,6 @@ async function loadCarsForStaff() {
     }
 }
 
-// 🌟 ทำระบบ Auto-fill เมื่อพนักงานเลือกป้ายทะเบียน (เฉพาะหน้าตรวจเช็ค)
 document.addEventListener('change', function(e) {
     if(e.target && e.target.id === 'check-license') {
         const selectedOption = e.target.options[e.target.selectedIndex];
@@ -263,13 +259,15 @@ function showAdminView(section) {
     let content = document.getElementById(section + '-content');
     if(content) {
         content.style.display = 'block'; document.getElementById(section + '-menu').classList.add('active');
-        if(section === 'admin-dashboard') loadAdminDashboard(); if(section === 'admin-users') loadAdminUsersTable(); if(section === 'admin-cars') loadAdminCarsTable(); if(section === 'admin-repairs') loadAdminRepairsTable(); if(section === 'admin-reports') loadAdminReportsTable();
-        let titles = {'admin-dashboard':{t:'แดชบอร์ด',d:'สถิติรวม',i:'fa-tachometer-alt'},'admin-users':{t:'จัดการผู้ใช้',d:'บัญชีพนักงาน',i:'fa-users-cog'},'admin-cars':{t:'จัดการรถยนต์',d:'ฐานข้อมูลรถยนต์',i:'fa-car'},'admin-repairs':{t:'อนุมัติซ่อม',d:'รายการรออนุมัติ',i:'fa-clipboard-check'},'admin-reports':{t:'รายงาน',d:'ประวัติทั้งหมด',i:'fa-file-invoice'}};
+        // 🌟 ลบการโหลด Dashboard ออก
+        if(section === 'admin-users') loadAdminUsersTable(); if(section === 'admin-cars') loadAdminCarsTable(); if(section === 'admin-repairs') loadAdminRepairsTable(); if(section === 'admin-reports') loadAdminReportsTable();
+        let titles = {'admin-users':{t:'จัดการผู้ใช้',d:'บัญชีพนักงาน',i:'fa-users-cog'},'admin-cars':{t:'จัดการรถยนต์',d:'ฐานข้อมูลรถยนต์',i:'fa-car'},'admin-repairs':{t:'อนุมัติซ่อม',d:'รายการรออนุมัติ',i:'fa-clipboard-check'},'admin-reports':{t:'รายงาน',d:'ประวัติทั้งหมด',i:'fa-file-invoice'}};
         if(titles[section]) { document.getElementById('admin-content-title').innerText = titles[section].t; document.getElementById('admin-content-desc').innerText = titles[section].d; document.getElementById('admin-header-icon').className = 'fas ' + titles[section].i; }
     }
 }
 
-async function loadAdminDashboard() { try { let uSnap = await db.collection('users').get(); document.getElementById('dashboard-users').innerText = uSnap.size; let cSnap = await db.collection('cars').get(); document.getElementById('dashboard-cars').innerText = cSnap.size; let rSnap = await db.collection('repairs').where('status', '==', 'pending').get(); document.getElementById('dashboard-repairs-pending').innerText = rSnap.size; } catch(e) {} }
+// 🌟 ลบฟังก์ชัน Dashboard ออกไปแล้ว
+
 async function loadAdminUsersTable() { let tbody = document.getElementById('admin-users-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div>กำลังโหลด...</td></tr>'; try { let snapshot = await db.collection('users').get(); tbody.innerHTML = ''; snapshot.forEach(doc => { let u = doc.data(); let rBadge = u.role === 'admin' ? '<span class="badge bg-primary">แอดมิน</span>' : '<span class="badge bg-secondary">พนักงาน</span>'; let statB = u.status === 'active' ? '<span class="badge bg-success">ปกติ</span>' : '<span class="badge bg-danger">ระงับ</span>'; tbody.innerHTML += `<tr><td class="text-muted small px-4">${u.id}</td><td><div class="fw-bold text-primary">${u.fname} ${u.lname}</div><div class="small text-muted"><i class="fas fa-user-circle"></i> ${u.user}</div></td><td>${u.dept || '-'}</td><td><i class="fas fa-phone-alt text-muted"></i> ${u.phone || '-'}</td><td>${rBadge} ${statB}</td><td class="text-end px-4"><button onclick="openUserModal('${doc.id}')" class="btn btn-sm btn-light border me-1"><i class="fas fa-edit text-muted"></i></button><button onclick="confirmDelete('users', '${doc.id}')" class="btn btn-sm btn-light border"><i class="fas fa-trash text-danger"></i></button></td></tr>`; }); } catch(e) {} }
 async function openUserModal(docId) { document.getElementById('user-form').reset(); if(docId && docId !== 'null') { document.getElementById('u_mode').value = docId; document.getElementById('u_id').readOnly = true; document.getElementById('u_id').classList.add('bg-light'); let doc = await db.collection('users').doc(docId).get(); if(doc.exists) { let user = doc.data(); document.getElementById('u_id').value = user.id; document.getElementById('u_fname').value = user.fname; document.getElementById('u_lname').value = user.lname; document.getElementById('u_dept').value = user.dept || ''; document.getElementById('u_phone').value = user.phone || ''; document.getElementById('u_role').value = user.role || 'staff'; document.getElementById('u_status').value = user.status || 'active'; document.getElementById('u_user').value = user.user; document.getElementById('u_pass').value = user.pass; } } else { document.getElementById('u_mode').value = 'add'; document.getElementById('u_id').readOnly = false; document.getElementById('u_id').classList.remove('bg-light'); document.getElementById('u_id').value = "EMP-" + Date.now().toString().slice(-4); } userModal.show(); }
 if(document.getElementById('user-form')){ document.getElementById('user-form').addEventListener('submit', async function(e) { e.preventDefault(); let mode = document.getElementById('u_mode').value; let userData = { id: document.getElementById('u_id').value.trim(), fname: document.getElementById('u_fname').value.trim(), lname: document.getElementById('u_lname').value.trim(), dept: document.getElementById('u_dept').value.trim(), phone: document.getElementById('u_phone').value.trim(), role: document.getElementById('u_role').value, status: document.getElementById('u_status').value, user: document.getElementById('u_user').value.trim(), pass: document.getElementById('u_pass').value.trim() }; try { if(mode === 'add') { await db.collection('users').add(userData); showAlert('success', 'เพิ่มพนักงานสำเร็จ', ''); } else { await db.collection('users').doc(mode).update(userData); showAlert('success', 'อัปเดตสำเร็จ', ''); } loadAdminUsersTable(); userModal.hide(); } catch(e) { showAlert('error', 'เกิดข้อผิดพลาด', e.message); } }); }
@@ -334,7 +332,6 @@ async function submitApproval(stat) {
         }); 
         approvalModal.hide();
         loadAdminRepairsTable(); 
-        loadAdminDashboard(); 
         showAlert('success', 'พิจารณาสำเร็จ!', 'ระบบส่งผลและเหตุผลกลับไปยังพนักงานแล้ว'); 
     } catch(e) { showAlert('error', 'ข้อผิดพลาด', e.message); } 
 }
@@ -459,6 +456,6 @@ async function viewDetails(type, docId) {
 function filterTable(inputId, tableId) { let input = document.getElementById(inputId).value.toLowerCase(); let tbody = document.getElementById(tableId).getElementsByTagName('tbody')[0]; if(tbody) Array.from(tbody.getElementsByTagName('tr')).forEach(tr => { tr.style.display = tr.innerText.toLowerCase().includes(input) ? '' : 'none'; }); }
 function showAlert(type, title, desc) { document.getElementById('alert-title').innerText = title; document.getElementById('alert-desc').innerText = desc; let icon = document.getElementById('alert-icon'), btn = document.getElementById('alert-buttons'); if(type === 'success') { icon.innerHTML = '<i class="fas fa-check-circle text-success" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-success w-100 fw-bold rounded-pill" data-bs-dismiss="modal">ตกลง</button>`; } else if(type === 'error') { icon.innerHTML = '<i class="fas fa-exclamation-circle text-danger" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-danger w-100 fw-bold rounded-pill" data-bs-dismiss="modal">ตกลง</button>`; } else if(type === 'delete') { icon.innerHTML = '<i class="fas fa-trash-alt text-danger" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-danger w-50 fw-bold rounded-pill" onclick="executeDelete()">ลบเลย</button><button class="btn btn-light border w-50 fw-bold rounded-pill" data-bs-dismiss="modal">ยกเลิก</button>`; } else if(type === 'logout') { icon.innerHTML = '<i class="fas fa-sign-out-alt text-warning" style="font-size:60px;"></i>'; btn.innerHTML = `<button class="btn btn-danger w-50 fw-bold rounded-pill" onclick="logout()">ออกจากระบบ</button><button class="btn btn-light border w-50 fw-bold rounded-pill" data-bs-dismiss="modal">ยกเลิก</button>`; } if(!alertModal) alertModal = new bootstrap.Modal(document.getElementById('alertModal')); alertModal.show(); }
 function confirmDelete(type, docId) { deleteType = type; deleteId = docId; showAlert('delete', 'ยืนยันการลบ?', 'ข้อมูลที่ลบจะไม่สามารถกู้คืนได้'); }
-async function executeDelete() { try { await db.collection(deleteType).doc(deleteId).delete(); if(deleteType === 'users') loadAdminUsersTable(); if(deleteType === 'cars') loadAdminCarsTable(); loadAdminDashboard(); alertModal.hide(); setTimeout(() => showAlert('success', 'ลบข้อมูลสำเร็จ', ''), 300); } catch(err) { alertModal.hide(); setTimeout(() => showAlert('error', 'ลบไม่สำเร็จ', 'เช็คสิทธิ์ Firebase Rule'), 300); } }
+async function executeDelete() { try { await db.collection(deleteType).doc(deleteId).delete(); if(deleteType === 'users') loadAdminUsersTable(); if(deleteType === 'cars') loadAdminCarsTable(); alertModal.hide(); setTimeout(() => showAlert('success', 'ลบข้อมูลสำเร็จ', ''), 300); } catch(err) { alertModal.hide(); setTimeout(() => showAlert('error', 'ลบไม่สำเร็จ', 'เช็คสิทธิ์ Firebase Rule'), 300); } }
 function showLogoutModal() { showAlert('logout', 'ยืนยันออกจากระบบ?', 'คุณต้องการสิ้นสุดการทำงานใช่หรือไม่'); }
 function logout() { sessionStorage.removeItem('carma_current_user'); window.location.href = 'index.html'; }
