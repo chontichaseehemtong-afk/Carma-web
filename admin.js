@@ -1,3 +1,6 @@
+// ==========================================
+// การตั้งค่า Firebase 
+// ==========================================
 const firebaseConfig = {
     apiKey: "AIzaSyA1Kic03h8Y2HWt4zi30VupMRZJ00q0-FE",
     authDomain: "carma-system.firebaseapp.com",
@@ -21,7 +24,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentUser = JSON.parse(sessionStorage.getItem('carma_current_user'));
     if (!currentUser || currentUser.role !== 'admin') { window.location.href = 'index.html'; return; }
     
-    // เปลี่ยนมาเปิด Dashboard เป็นค่าเริ่มต้นแทน
     showAdminView('admin-dashboard');
 });
 
@@ -38,12 +40,14 @@ function showAdminView(section) {
         if(section === 'admin-repairs') loadAdminRepairsTable(); 
         if(section === 'admin-reports') loadAdminReportsTable();
         
-        let titles = {'admin-dashboard':{t:'แดชบอร์ดแอดมิน',d:'ภาพรวมของระบบทั้งหมด',i:'fa-chart-line'},'admin-users':{t:'จัดการผู้ใช้',d:'บัญชีพนักงาน',i:'fa-users-cog'},'admin-cars':{t:'จัดการรถยนต์',d:'ฐานข้อมูลรถยนต์',i:'fa-car'},'admin-repairs':{t:'อนุมัติซ่อม',d:'รายการรออนุมัติ',i:'fa-clipboard-check'},'admin-reports':{t:'รายงาน',d:'ประวัติทั้งหมด',i:'fa-file-invoice'}};
+        let titles = {'admin-dashboard':{t:'แดชบอร์ดผู้บริหาร',d:'ภาพรวมของระบบทั้งหมด',i:'fa-chart-line'},'admin-users':{t:'จัดการผู้ใช้',d:'บัญชีพนักงาน',i:'fa-users-cog'},'admin-cars':{t:'จัดการรถยนต์',d:'ฐานข้อมูลรถยนต์',i:'fa-car'},'admin-repairs':{t:'อนุมัติซ่อม',d:'รายการรออนุมัติ',i:'fa-clipboard-check'},'admin-reports':{t:'รายงาน',d:'ประวัติทั้งหมด',i:'fa-file-invoice'}};
         document.getElementById('admin-content-title').innerText = titles[section].t; document.getElementById('admin-content-desc').innerText = titles[section].d; document.getElementById('admin-header-icon').className = 'fas ' + titles[section].i; 
     }
 }
 
-// โหลดข้อมูล Dashboard ของ Admin
+// ---------------------------------------------------------
+// แดชบอร์ด (Admin)
+// ---------------------------------------------------------
 async function loadAdminDashboard() {
     try {
         let usersSnap = await db.collection('users').get();
@@ -58,6 +62,9 @@ async function loadAdminDashboard() {
     } catch(e) { console.error("Error loading admin dashboard", e); }
 }
 
+// ---------------------------------------------------------
+// จัดการผู้ใช้ & ตรวจสอบชื่อ-นามสกุลซ้ำ
+// ---------------------------------------------------------
 async function loadAdminUsersTable() { 
     let tbody = document.getElementById('admin-users-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; 
     try { 
@@ -80,11 +87,75 @@ async function openUserModal(docId) {
 }
 
 document.getElementById('user-form').addEventListener('submit', async function(e) { 
-    e.preventDefault(); let mode = document.getElementById('u_mode').value; 
-    let userData = { id: document.getElementById('u_id').value.trim(), fname: document.getElementById('u_fname').value.trim(), lname: document.getElementById('u_lname').value.trim(), dept: document.getElementById('u_dept').value.trim(), phone: document.getElementById('u_phone').value.trim(), role: document.getElementById('u_role').value, status: document.getElementById('u_status').value, user: document.getElementById('u_user').value.trim(), pass: document.getElementById('u_pass').value.trim() }; 
-    try { if(mode === 'add') { userData.loginCount = 0; await db.collection('users').add(userData); showAlert('success', 'เพิ่มพนักงานสำเร็จ', ''); } else { await db.collection('users').doc(mode).update(userData); showAlert('success', 'อัปเดตสำเร็จ', ''); } loadAdminUsersTable(); userModal.hide(); } catch(e) { showAlert('error', 'ข้อผิดพลาด', e.message); } 
+    e.preventDefault(); 
+    let submitBtn = this.querySelector('button[type="submit"]');
+    let originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> กำลังตรวจสอบข้อมูล...';
+
+    let mode = document.getElementById('u_mode').value; 
+    let u_fname = document.getElementById('u_fname').value.trim();
+    let u_lname = document.getElementById('u_lname').value.trim();
+
+    try {
+        let duplicateQuery = await db.collection('users')
+            .where('fname', '==', u_fname)
+            .where('lname', '==', u_lname)
+            .get();
+
+        let isDuplicate = false;
+        if (!duplicateQuery.empty) {
+            if (mode === 'add') {
+                isDuplicate = true;
+            } else {
+                duplicateQuery.forEach(doc => {
+                    if (doc.id !== mode) isDuplicate = true; 
+                });
+            }
+        }
+
+        if (isDuplicate) {
+            showAlert('error', 'ข้อมูลซ้ำซ้อน!', `มีพนักงานชื่อ "${u_fname} ${u_lname}" อยู่ในระบบแล้ว กรุณาตรวจสอบอีกครั้ง`);
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+            return; 
+        }
+
+        let userData = { 
+            id: document.getElementById('u_id').value.trim(), 
+            fname: u_fname, 
+            lname: u_lname, 
+            dept: document.getElementById('u_dept').value.trim(), 
+            phone: document.getElementById('u_phone').value.trim(), 
+            role: document.getElementById('u_role').value, 
+            status: document.getElementById('u_status').value, 
+            user: document.getElementById('u_user').value.trim(), 
+            pass: document.getElementById('u_pass').value.trim() 
+        }; 
+
+        if(mode === 'add') { 
+            userData.loginCount = 0; 
+            await db.collection('users').add(userData); 
+            showAlert('success', 'เพิ่มพนักงานสำเร็จ', ''); 
+        } else { 
+            await db.collection('users').doc(mode).update(userData); 
+            showAlert('success', 'อัปเดตสำเร็จ', ''); 
+        } 
+        
+        loadAdminUsersTable(); 
+        userModal.hide(); 
+
+    } catch(e) { 
+        showAlert('error', 'ข้อผิดพลาด', e.message); 
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
 });
 
+// ---------------------------------------------------------
+// จัดการรถยนต์
+// ---------------------------------------------------------
 async function loadAdminCarsTable() { 
     let tbody = document.getElementById('admin-cars-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; 
     try { 
@@ -115,6 +186,9 @@ document.getElementById('car-form').addEventListener('submit', async function(e)
     try { if(mode === 'add') { await db.collection('cars').add(carData); showAlert('success', 'เพิ่มรถสำเร็จ', ''); } else { await db.collection('cars').doc(mode).update(carData); showAlert('success', 'อัปเดตสำเร็จ', ''); } loadAdminCarsTable(); carModal.hide(); } catch(e) { showAlert('error', 'ข้อผิดพลาด', e.message); } 
 });
 
+// ---------------------------------------------------------
+// พิจารณาอนุมัติซ่อม
+// ---------------------------------------------------------
 async function loadAdminRepairsTable() { 
     let tbody = document.getElementById('admin-repairs-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; 
     try { 
@@ -139,6 +213,9 @@ async function openApprovalModal(docId) {
 
 async function submitApproval(stat) { let docId = document.getElementById('approve_doc_id').value; let reason = document.getElementById('approval-reason').value.trim(); try { await db.collection('repairs').doc(docId).update({ status: stat, adminReason: reason }); approvalModal.hide(); loadAdminRepairsTable(); loadAdminDashboard(); showAlert('success', 'พิจารณาสำเร็จ!', 'ระบบส่งผลให้พนักงานแล้ว'); } catch(e) { showAlert('error', 'ข้อผิดพลาด', e.message); } }
 
+// ---------------------------------------------------------
+// รายงานรวม
+// ---------------------------------------------------------
 async function loadAdminReportsTable() { 
     let tbody = document.getElementById('admin-reports-table').getElementsByTagName('tbody')[0]; if(!tbody) return; tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; 
     try { 
