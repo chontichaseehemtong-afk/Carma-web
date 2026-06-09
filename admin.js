@@ -40,7 +40,7 @@ function showAdminView(section) {
         if(section === 'admin-repairs') loadAdminRepairsTable(); 
         if(section === 'admin-reports') loadAdminReportsTable();
         
-        let titles = {'admin-dashboard':{t:'แดชบอร์ดผู้บริหาร',d:'ภาพรวมของระบบทั้งหมด',i:'fa-chart-line'},'admin-users':{t:'จัดการผู้ใช้',d:'บัญชีพนักงาน',i:'fa-users-cog'},'admin-cars':{t:'จัดการรถยนต์',d:'ฐานข้อมูลรถยนต์',i:'fa-car'},'admin-repairs':{t:'อนุมัติซ่อม',d:'รายการรออนุมัติ',i:'fa-clipboard-check'},'admin-reports':{t:'รายงาน',d:'ประวัติทั้งหมด',i:'fa-file-invoice'}};
+        let titles = {'admin-dashboard':{t:'แดชบอร์ดแอดมิน',d:'ภาพรวมของระบบทั้งหมด',i:'fa-chart-line'},'admin-users':{t:'จัดการผู้ใช้',d:'บัญชีพนักงาน',i:'fa-users-cog'},'admin-cars':{t:'จัดการรถยนต์',d:'ฐานข้อมูลรถยนต์',i:'fa-car'},'admin-repairs':{t:'อนุมัติซ่อม',d:'รายการรออนุมัติ',i:'fa-clipboard-check'},'admin-reports':{t:'รายงาน',d:'ประวัติทั้งหมด',i:'fa-file-invoice'}};
         document.getElementById('admin-content-title').innerText = titles[section].t; document.getElementById('admin-content-desc').innerText = titles[section].d; document.getElementById('admin-header-icon').className = 'fas ' + titles[section].i; 
     }
 }
