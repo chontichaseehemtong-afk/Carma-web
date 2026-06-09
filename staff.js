@@ -24,23 +24,78 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('staff-user-name').innerText = currentUserName;
     if(document.getElementById('repair-name')) document.getElementById('repair-name').value = currentUserName;
     
-    showView('staff-dashboard'); 
-    setupImageUpload(); loadCarsForStaff();
+    setupImageUpload(); 
+    await showView('staff-dashboard'); 
 });
 
 async function loadCarsForStaff() {
     try {
-        const snapshot = await db.collection('cars').get();
-        let options = '<option value="" selected disabled>-- โปรดเลือกป้ายทะเบียน --</option>';
-        snapshot.forEach(doc => {
-            const car = doc.data();
-            if (car.status !== 'ปลดระวาง' && car.status !== 'inactive') {
-                let carModel = car.model || car.brand || '-';
-                options += `<option value="${car.license}" data-color="${car.color || '-'}" data-model="${carModel}">${car.license} (${carModel})</option>`;
+        const [carsSnap, checksSnap] = await Promise.all([
+            db.collection('cars').get(),
+            db.collection('checks').get()
+        ]);
+        
+        let todayDate = new Date();
+        let todayStr = todayDate.toLocaleDateString('th-TH');
+
+        let checkedLicensesToday = new Set();
+        
+        checksSnap.forEach(doc => {
+            let data = doc.data();
+            if (!data.license) return;
+
+            let isToday = false;
+            if (data.date === todayStr) {
+                isToday = true;
+            } else if (data.timestamp) {
+                let d = new Date(data.timestamp.toMillis());
+                if (d.getDate() === todayDate.getDate() && d.getMonth() === todayDate.getMonth() && d.getFullYear() === todayDate.getFullYear()) {
+                    isToday = true;
+                }
+            }
+
+            if (isToday) {
+                checkedLicensesToday.add(data.license.trim());
             }
         });
-        if (document.getElementById('check-license')) document.getElementById('check-license').innerHTML = options;
-        if (document.getElementById('repair-license')) document.getElementById('repair-license').innerHTML = options;
+
+        let uniqueCarsMap = new Map();
+        carsSnap.forEach(doc => {
+            let car = doc.data();
+            if (car.status !== 'ปลดระวาง' && car.status !== 'inactive' && car.license) {
+                uniqueCarsMap.set(car.license.trim(), car);
+            }
+        });
+
+        let checkOptions = '<option value="" selected disabled>-- โปรดเลือกป้ายทะเบียน --</option>';
+        let repairOptions = '<option value="" selected disabled>-- โปรดเลือกป้ายทะเบียน --</option>';
+
+        uniqueCarsMap.forEach((car, lic) => {
+            let carModel = car.model || car.brand || '-';
+            let optionHtml = `<option value="${lic}" data-color="${car.color || '-'}" data-model="${carModel}">${lic} (${carModel})</option>`;
+            
+            if (!checkedLicensesToday.has(lic)) {
+                checkOptions += optionHtml;
+            }
+            repairOptions += optionHtml; 
+        });
+
+        let checkSelect = document.getElementById('check-license');
+        let repairSelect = document.getElementById('repair-license');
+
+        if (checkSelect) checkSelect.innerHTML = checkOptions;
+        if (repairSelect) repairSelect.innerHTML = repairOptions;
+
+        if (currentEditCheckId && checkSelect) {
+            let editDoc = await db.collection('checks').doc(currentEditCheckId).get();
+            if (editDoc.exists) {
+                let editData = editDoc.data();
+                let editLic = editData.license ? editData.license.trim() : '';
+                if (editLic && !checkSelect.innerHTML.includes(`value="${editLic}"`)) {
+                    checkSelect.innerHTML += `<option value="${editLic}" data-color="${editData.color || '-'}">${editLic} (ดึงข้อมูลเพื่อแก้ไข)</option>`;
+                }
+            }
+        }
     } catch (e) { console.error('โหลดข้อมูลรถล้มเหลว', e); }
 }
 
@@ -55,44 +110,41 @@ document.addEventListener('change', function(e) {
     }
 });
 
-function showView(section) {
+async function showView(section) {
     document.querySelectorAll('.content-section').forEach(sec => sec.style.display = 'none');
     document.querySelectorAll('.sidebar-menu .nav-link').forEach(link => link.classList.remove('active'));
     let content = document.getElementById(section + '-content');
     if(content) {
         content.style.display = 'block'; document.getElementById(section + '-menu').classList.add('active');
-        if(section === 'staff-dashboard') loadStaffDashboard(); 
-        if(section === 'staff-check') loadStaffCheckItems(); 
-        if(section === 'staff-status') loadStaffStatusTable();
         
-        // อัปเดต: ระบุชื่อ currentUserName เข้าไปในคำอธิบายหน้าแดชบอร์ดเลย
+        if(section === 'staff-dashboard') await loadStaffDashboard(); 
+        if(section === 'staff-check') {
+            loadStaffCheckItems(); 
+            await loadCarsForStaff(); 
+        }
+        if(section === 'staff-status') await loadStaffStatusTable();
+        if(section === 'staff-repair') await loadCarsForStaff(); 
+        
         let titles = {
             'staff-dashboard':{t:'หน้าแรก (แดชบอร์ดส่วนตัว)',d:`สรุปสถิติการทำงานของ: ${currentUserName}`,i:'fa-user'}, 
             'staff-check':{t:'บันทึกตรวจเช็ค',d:'ตรวจสอบรายการ 15 ข้อ',i:'fa-clipboard-check'},
             'staff-repair':{t:'แจ้งซ่อม',d:'ขออนุมัติซ่อม',i:'fa-tools'},
             'staff-status':{t:'สถานะงานของฉัน',d:'ติดตามการทำงานของคุณ',i:'fa-history'}
         };
-        document.getElementById('staff-content-title').innerText = titles[section].t; 
-        document.getElementById('staff-content-desc').innerText = titles[section].d; 
-        document.getElementById('staff-header-icon').className = 'fas ' + titles[section].i;
+        if(titles[section]) {
+            document.getElementById('staff-content-title').innerText = titles[section].t; 
+            document.getElementById('staff-content-desc').innerText = titles[section].d; 
+            document.getElementById('staff-header-icon').className = 'fas ' + titles[section].i;
+        }
     }
 }
 
-// -------------------------------------------------------------
-// สังเกตตรงนี้ครับ: โค้ดมีการ .where('name') และ .where('staff')
-// เพื่อกรองเอามาเฉพาะประวัติของ currentUserName เรียบร้อยแล้ว 100%
-// -------------------------------------------------------------
 async function loadStaffDashboard() {
     try {
         let repairsSnap = await db.collection('repairs').where('name', '==', currentUserName).get();
         let checksSnap = await db.collection('checks').where('staff', '==', currentUserName).get();
-        
-        let totalRepairs = repairsSnap.size;
-        let totalChecks = checksSnap.size;
-        let pendingRepairs = 0;
-        
+        let totalRepairs = repairsSnap.size, totalChecks = checksSnap.size, pendingRepairs = 0;
         repairsSnap.forEach(doc => { if(doc.data().status === 'pending') pendingRepairs++; });
-        
         document.getElementById('dash-staff-checks').innerHTML = `${totalChecks} <small class="fs-6 fw-normal">ครั้ง</small>`;
         document.getElementById('dash-staff-repairs').innerHTML = `${totalRepairs} <small class="fs-6 fw-normal">รายการ</small>`;
         document.getElementById('dash-staff-pending').innerHTML = `${pendingRepairs} <small class="fs-6 fw-normal">รายการ</small>`;
@@ -127,7 +179,7 @@ function updateImageUI() {
 }
 window.removeRepairImage = function(index) { selectedRepairImages.splice(index, 1); updateImageUI(); }
 
-async function loadStaffCheckItems() {
+function loadStaffCheckItems() {
     let container = document.getElementById('check-items-list'); if(!container) return; container.innerHTML = '';
     Object.keys(ITEM_NAMES).forEach(id => { container.innerHTML += `<div class="col-md-6 mb-2"><div class="p-3 border rounded bg-light d-flex justify-content-between align-items-center"><span class="fw-bold text-secondary small">${ITEM_NAMES[id]}</span><div><div class="form-check form-check-inline text-success"><input class="form-check-input" type="radio" name="chk_${id}" id="p_${id}" value="pass" required><label class="form-check-label fw-bold small" for="p_${id}">ปกติ</label></div><div class="form-check form-check-inline text-danger m-0"><input class="form-check-input" type="radio" name="chk_${id}" id="f_${id}" value="fail" required><label class="form-check-label fw-bold small" for="f_${id}">ไม่ปกติ</label></div></div></div></div>`; });
 }
@@ -137,9 +189,16 @@ document.getElementById('staff-check-form').addEventListener('submit', async fun
     new FormData(this).forEach((v, k) => { if(k.startsWith('chk_')) { rawChecks[k] = v; if(v === 'fail') { isPass = false; defectsList.push(ITEM_NAMES[k.replace('chk_', '')]); } } });
     let checkData = { license: document.getElementById('check-license').value, color: document.getElementById('check-color').value, status: isPass ? "ปกติ" : "พบจุดบกพร่อง", defects: defectsList, rawChecks: rawChecks, date: new Date().toLocaleDateString('th-TH'), staff: currentUserName, timestamp: firebase.firestore.FieldValue.serverTimestamp() };
     try {
-        if (currentEditCheckId) { await db.collection('checks').doc(currentEditCheckId).update(checkData); currentEditCheckId = null; showAlert('success', 'อัปเดตสำเร็จ!', 'บันทึกการแก้ไขแล้ว'); } 
-        else { await db.collection('checks').add(checkData); showAlert('success', 'บันทึกสำเร็จ!', 'ระบบจะพาท่านไปยังหน้ารายงาน'); }
-        this.reset(); loadStaffCheckItems(); setTimeout(() => { if(alertModal) alertModal.hide(); showView('staff-status'); }, 1500);
+        if (currentEditCheckId) { 
+            await db.collection('checks').doc(currentEditCheckId).update(checkData); 
+            showAlert('success', 'อัปเดตสำเร็จ!', 'บันทึกการแก้ไขแล้ว'); 
+        } else { 
+            await db.collection('checks').add(checkData); 
+            showAlert('success', 'บันทึกสำเร็จ!', 'ระบบจะพาท่านไปยังหน้ารายงาน'); 
+        }
+        currentEditCheckId = null;
+        this.reset(); 
+        setTimeout(() => { if(alertModal) alertModal.hide(); showView('staff-status'); }, 1500);
     } catch(err) { showAlert('error', 'ข้อผิดพลาด', err.message); }
 });
 
@@ -147,9 +206,22 @@ async function editCheckItem(docId) {
     try {
         let doc = await db.collection('checks').doc(docId).get();
         if(doc.exists) {
-            let data = doc.data(); currentEditCheckId = docId; showView('staff-check');
-            document.getElementById('check-license').value = data.license; document.getElementById('check-color').value = data.color || '';
-            setTimeout(() => { if(data.rawChecks) { Object.keys(data.rawChecks).forEach(k => { let val = data.rawChecks[k]; let idKey = k.replace('chk_', ''); if(val === 'pass') document.getElementById('p_' + idKey).checked = true; if(val === 'fail') document.getElementById('f_' + idKey).checked = true; }); } }, 200);
+            let data = doc.data(); 
+            currentEditCheckId = docId; 
+            
+            await showView('staff-check'); 
+            
+            document.getElementById('check-license').value = data.license.trim(); 
+            document.getElementById('check-color').value = data.color || '';
+            
+            if(data.rawChecks) { 
+                Object.keys(data.rawChecks).forEach(k => { 
+                    let val = data.rawChecks[k]; 
+                    let idKey = k.replace('chk_', ''); 
+                    if(val === 'pass') { let el = document.getElementById('p_' + idKey); if(el) el.checked = true; } 
+                    if(val === 'fail') { let el = document.getElementById('f_' + idKey); if(el) el.checked = true; } 
+                }); 
+            }
             window.scrollTo(0, 0);
         }
     } catch(e) { console.error(e); }
@@ -189,7 +261,8 @@ async function loadStaffStatusTable() {
         repairsSnap.forEach(doc => { let d = doc.data(); let ts = d.timestamp ? d.timestamp.toMillis() : Date.now(); allData.push({ id: doc.id, type: 'repair', data: d, ts: ts }); });
         checksSnap.forEach(doc => { let d = doc.data(); let ts = d.timestamp ? d.timestamp.toMillis() : Date.now(); allData.push({ id: doc.id, type: 'check', data: d, ts: ts }); });
         
-        allData.sort((a, b) => a.ts - b.ts);
+        // === อัปเดตการจัดเรียงตรงนี้: a.ts - b.ts ทำให้เรียงจากเก่าสุดไปใหม่สุด ===
+        allData.sort((a, b) => a.ts - b.ts); 
         
         tbody.innerHTML = ''; let rowNum = 1;
         if(badgeCount) badgeCount.innerText = `ทั้งหมด ${allData.length} รายการ`;
